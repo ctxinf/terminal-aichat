@@ -80,38 +80,22 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     // 找到要使用的 provider 和 model
     let (provider_key, provider, model_key, model): (&String, &ProviderConfig, &String, &ModelConfig);
 
-    if let Some(model_name) = &cli.model {
-        // 遍历所有 providers 查找匹配的 model
-        let (found_provider_key, found_model_key) = find_model_by_name(runtime_config, model_name)
-            .ok_or_else(|| {
-                eprintln!("❌ Model '{}' not found in any provider", model_name);
-                exit(1);
-            })?;
-        provider_key = runtime_config.providers.keys().find(|k| *k == &found_provider_key).unwrap();
-        provider = runtime_config.providers.get(provider_key).unwrap();
-        model_key = provider.models.keys().find(|k| *k == &found_model_key).unwrap();
-        model = provider.models.get(model_key).unwrap();
-    } else {
-        // 使用默认配置
-        provider_key = runtime_config.default_provider.as_ref().ok_or_else(|| {
-            let hint = format!("Edit config file or set default-provider. Use {} to see config location.", "aichat -l".dark_green());
-            eprintln!("❌ No default provider specified, please:\n{}", hint);
-            exit(78);
-        })?;
-        model_key = runtime_config.default_model.as_ref().ok_or_else(|| {
-            let hint = format!("Edit config file or set default-model. Use {} to see config location.", "aichat -l".dark_green());
-            eprintln!("❌ No default model specified, please:\n{}", hint);
-            exit(78);
-        })?;
-        provider = runtime_config.providers.get(provider_key).ok_or_else(|| {
-            eprintln!("❌ Provider '{}' not found", provider_key);
+    let target_model = cli.model.as_ref().or_else(|| runtime_config.default_model.as_ref()).ok_or_else(|| {
+        let hint = format!("Edit config file or set default-model. Use {} to see config location.", "aichat -l".dark_green());
+        eprintln!("❌ No model specified, please:\n{}", hint);
+        exit(78);
+    })?;
+
+    // 遍历所有 providers 查找匹配的 model
+    let (found_provider_key, found_model_key) = find_model_by_name(runtime_config, target_model)
+        .ok_or_else(|| {
+            eprintln!("❌ Model '{}' not found in any provider", target_model);
             exit(1);
         })?;
-        model = provider.models.get(model_key).ok_or_else(|| {
-            eprintln!("❌ Model '{}' not found in provider '{}'", model_key, provider_key);
-            exit(1);
-        })?;
-    }
+    provider_key = runtime_config.providers.keys().find(|k| *k == &found_provider_key).unwrap();
+    provider = runtime_config.providers.get(provider_key).unwrap();
+    model_key = provider.models.keys().find(|k| *k == &found_model_key).unwrap();
+    model = provider.models.get(model_key).unwrap();
 
     let prompt_name = runtime_config.default_prompt.as_ref().ok_or_else(|| {
         let hint = format!("Edit config file or set default-prompt. Use {} to see config location.", "aichat -l".dark_green());
@@ -178,7 +162,6 @@ fn merge_config(file_config: &Config, cli: &Cli) -> Config {
         prompts: file_config.prompts.clone(),
 
         // 默认值保持文件配置
-        default_provider: file_config.default_provider.clone(),
         default_model: file_config.default_model.clone(),
         default_prompt: cli.prompt.clone().or_else(|| file_config.default_prompt.clone()),
 

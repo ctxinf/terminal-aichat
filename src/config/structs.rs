@@ -26,8 +26,6 @@ pub struct PromptConfig {
 pub struct Config {
     pub providers: HashMap<String, ProviderConfig>,
     pub prompts: HashMap<String, PromptConfig>,
-    #[serde(rename = "default-provider")]
-    pub default_provider: Option<String>,
     #[serde(rename = "default-model")]
     pub default_model: Option<String>,
     #[serde(rename = "default-prompt")]
@@ -77,7 +75,6 @@ Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`
         Config {
             providers,
             prompts,
-            default_provider: Some("openai".to_string()),
             default_model: Some("gpt-5-mini".to_string()),
             default_prompt: Some("sample_prompt".to_string()),
             disable_stream: false,

@@ -6,20 +6,16 @@ pub fn print_providers(config: &Config) -> io::Result<()> {
     println!("Providers & Models:");
 
     // 显示默认配置
-    if let Some(default_provider) = &config.default_provider {
-        if let Some(default_model) = &config.default_model {
-            println!("Default: {} / {}", default_provider, default_model);
-        }
+    if let Some(default_model) = &config.default_model {
+        println!("Default model: {}", default_model);
     }
 
     // 遍历所有 providers
     for (provider_key, provider) in &config.providers {
         let provider_name = provider.get_name(provider_key);
-        let is_default_provider = config.default_provider.as_ref() == Some(provider_key);
 
         // 打印 provider 名称
-        let default_mark = if is_default_provider { " *" } else { "" };
-        println!("\n{}{} ({})", provider_name, default_mark, provider_key);
+        println!("\n{} ({})", provider_name, provider_key);
 
         // 打印 base URL
         println!("  Base URL: {}", provider.base_url);
@@ -32,7 +28,8 @@ pub fn print_providers(config: &Config) -> io::Result<()> {
         println!("  Models:");
         for (model_key, model) in &provider.models {
             let model_name = model.get_name(model_key);
-            let is_default_model = is_default_provider && config.default_model.as_ref() == Some(model_key);
+            let is_default_model = config.default_model.as_ref() == Some(model_key)
+                || config.default_model.as_ref() == Some(&model_name);
 
             let default_mark = if is_default_model { " *" } else { "" };
             print!("    - {}", model_name);
