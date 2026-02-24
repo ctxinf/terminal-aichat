@@ -49,19 +49,27 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/slow-groovin/termi
 在[Release](https://github.com/slow-groovin/terminal-aichat/releases)页面中直接下载二进制程序。
 
 ### 前置要求
-配置模型(以openrouter为例)
-```sh
-aichat set model my_model_1 --model-name openai/gpt-oss-20b:free --base-url https://openrouter.ai/api/v1 --api-key <YOUR_API_KEY>
+编辑配置文件来设置provider和models：
 
-aichat use model my_model_1
+```sh
+# 首先获取配置文件位置
+aichat --list
+# 或者直接运行：
+aichat
+
+# 然后编辑配置文件（以Linux为例）
+nano ~/.config/terminal-aichat/config.jsonc
 ```
+
+配置文件中包含一个注释掉的示例，您可以取消注释并修改。
+
 ### chat
 ```sh
 # 直接发送消息
 aichat how to view ubuntu release version
 
-# 如果消息与子命令冲突，用引号包裹
-aichat "set swap memory to 0"
+# 如果消息与选项冲突，用引号包裹
+aichat "how to use --config option"
 
 # 其他方式
 aichat "<INPUT MESSAGE>"
@@ -75,31 +83,99 @@ cat input.txt | aichat "explain this"
 aichat --pure "Hello?"
 ```
 
-## 配置和命令
-#### 查看配置
-```sh
-aichat list
-aichat list model
-aichat list prompt
-```
-#### 配置prompt
+## 配置
+
+### 查看配置
 
 ```sh
-aichat set prompt <PROMPT_CONFIG_NAME> --content "your prompt content"
-aichat set prompt my_prompt_1 --content "use plain text, give extremly concise output"
+aichat --list
+# 或者
+aichat -l
 ```
-#### 部分更新model配置
+
+这将显示所有已配置的providers、models、prompts以及配置文件位置。
+
+### 编辑配置
+
+通过直接编辑配置文件进行配置（支持注释的JSONC格式）。
+
+配置文件位置（跨平台）：
+- Linux: `~/.config/terminal-aichat/config.jsonc`
+- macOS: `~/Library/Application Support/terminal-aichat/config.jsonc`
+- Windows: `%APPDATA%\terminal-aichat\config.jsonc`
+
+配置文件使用JSONC格式，支持注释。默认配置文件中提供了完整示例。
+
+配置结构示例：
+```jsonc
+{
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "models": {
+        "gpt-4o": {
+          "name": "gpt-4o",
+          "temperature": 0.7
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini",
+          "temperature": 0.5
+        }
+      }
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-or-...",
+      "models": {
+        "llama-3": {
+          "name": "meta-llama/llama-3-70b-instruct",
+          "temperature": 0.3
+        }
+      }
+    }
+  },
+  "prompts": {
+    "sample_prompt": {
+      "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"
+    }
+  },
+  "default-model": "gpt-5-mini",
+  "default-prompt": "sample_prompt",
+  "disable-stream": false,
+  "pure": false,
+  "verbose": false
+}
+```
+
+### 指定模型
 
 ```sh
-aichat set model my_model_1 --temperature 0.3 --model-name gpt-4o
+# 使用特定模型（会搜索所有providers）
+aichat --model gpt-4o "Hello?"
+
+# 或者短格式
+aichat -m gpt-5-mini "Hello?"
 ```
-#### 设置model temperature
+
+### 指定提示词
+
 ```sh
-aichat set model my_model_1 --temperature 0.3 
+# 使用特定提示词
+aichat --prompt concise "Hello?"
+
+# 或者短格式
+aichat -p sample_prompt "Hello?"
 ```
-#### 删除配置项
+
+### 使用自定义配置文件
+
 ```sh
-aichat delete model sample_model_gpt
+# 指定自定义配置文件路径
+aichat --config /path/to/config.jsonc --list
+aichat --config /path/to/config.jsonc "Hello?"
 ```
 
 #### 使用临时环境变量指定 api-key
@@ -107,22 +183,6 @@ aichat delete model sample_model_gpt
 ```sh
 export OPENAI_API_KEY=sk-***************
 aichat "Hello?"
-```
-#### 配置文件
-> 第一次运行程序时, 会自动初始化配置文件
-
-- 配置文件位置（跨平台）：
-  - Linux: `~/.config/terminal-aichat/config.json`
-  - macOS: `~/Library/Application Support/terminal-aichat/config.json`
-  - Windows: `%APPDATA%\terminal-aichat\config.json`
-- 加密密钥文件存储在配置目录下的 `aes_key.bin`（用于加密API密钥，避免明文存储）
-
-```sh
-# 查看配置目录位置
-aichat list
-
-# 查看配置文件内容（以Linux为例）
-cat ~/.config/terminal-aichat/config.json
 ```
 #### 设置日志级别
 ```sh

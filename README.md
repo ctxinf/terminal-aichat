@@ -13,11 +13,9 @@ A CLI for AI/LLM chat in terminal
 - using `/v1/chat/completion` API
 
 
-
 ```sh
-aichat <INPUT MESSAGE>    
+aichat <INPUT MESSAGE>
 ```
-
 
 
 ## Quick Start
@@ -57,13 +55,19 @@ or download executable binaries directly in [Release](https://github.com/slow-gr
 
 ### Prerequisites
 
-Configure a model (example with OpenRouter):
+Edit the config file to setup providers and models:
 
 ```sh
-aichat set model my_model_1 --model-name openai/gpt-oss-20b:free --base-url https://openrouter.ai/api/v1 --api-key <YOUR_API_KEY>
+# First, get the config file location
+aichat --list
+# Or just:
+aichat
 
-aichat use model my_model_1
+# Then edit the config file (example for Linux)
+nano ~/.config/terminal-aichat/config.jsonc
 ```
+
+The config file contains a commented-out example that you can uncomment and modify.
 
 ### Chat
 
@@ -71,83 +75,124 @@ aichat use model my_model_1
 # Directly send a message
 aichat how to view ubuntu release version
 
-# If your message conflicts with a subcommand, wrap it with quotes
-aichat "set swap memory to 0"
+# If your message conflicts with an option, wrap it with quotes
+aichat "how to use --config option"
 
 # other ways
-aichat "<INPUT MESSAGE>"  
-aichat -- <INPUT MESSAGE> 
+aichat "<INPUT MESSAGE>"
+aichat -- <INPUT MESSAGE>
 
 # pipe
-cat input.txt | aichat   
+cat input.txt | aichat
 cat input.txt | aichat "explain this"
 
 # pure mode (display for model/prompts configs and costs will be hide)
 aichat --pure "Hello?"
 ```
 
-## Configurations And Commands
+## Configuration
 
 ### View Configurations
 
 ```sh
-aichat list
-aichat list model
-aichat list prompt
+aichat --list
+# or
+aichat -l
 ```
 
-### Configure Prompts
+This will show all configured providers, models, prompts, and the config file location.
 
-```sh
-aichat set prompt <PROMPT_CONFIG_NAME> --content "your prompt content"
-aichat set prompt my_prompt_1 --content "use plain text, give extremely concise output"
+### Edit Configuration
+
+Configuration is done by directly editing the config file (JSONC format with comments support).
+
+Config file locations (cross-platform):
+- Linux: `~/.config/terminal-aichat/config.jsonc`
+- macOS: `~/Library/Application Support/terminal-aichat/config.jsonc`
+- Windows: `%APPDATA%\terminal-aichat\config.jsonc`
+
+The config file uses JSONC format, which supports comments. A complete example is provided in the default config file.
+
+Example config structure:
+```jsonc
+{
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "models": {
+        "gpt-4o": {
+          "name": "gpt-4o",
+          "temperature": 0.7
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini",
+          "temperature": 0.5
+        }
+      }
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-or-...",
+      "models": {
+        "llama-3": {
+          "name": "meta-llama/llama-3-70b-instruct",
+          "temperature": 0.3
+        }
+      }
+    }
+  },
+  "prompts": {
+    "sample_prompt": {
+      "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"
+    }
+  },
+  "default-model": "gpt-5-mini",
+  "default-prompt": "sample_prompt",
+  "disable-stream": false,
+  "pure": false,
+  "verbose": false
+}
 ```
 
-### Update Model Configuration (Partial Update)
+### Specify a Model
 
 ```sh
-aichat set model my_model_1 --temperature 0.3 --model-name gpt-4o
+# Use a specific model (searches all providers)
+aichat --model gpt-4o "Hello?"
+
+# Or short form
+aichat -m gpt-5-mini "Hello?"
 ```
 
-### Set Model Temperature
+### Specify a Prompt
 
 ```sh
-aichat set model my_model_1 --temperature 0.3
+# Use a specific prompt
+aichat --prompt concise "Hello?"
+
+# Or short form
+aichat -p sample_prompt "Hello?"
 ```
 
-### Delete a Configuration Item
+### Use Custom Config File
 
 ```sh
-aichat delete model sample_model_gpt
+# Specify a custom config file path
+aichat --config /path/to/config.jsonc --list
+aichat --config /path/to/config.jsonc "Hello?"
 ```
 
 ### Use Temporary API Key via Environment Variable
 
 > Useful for avoiding persistent API key storage or for testing.
-> it will override API key in final request.
+> It will override API key in final request.
 
 ```sh
 export OPENAI_API_KEY=sk-***************
 aichat "Hello?"
-```
-
-### Configuration Files
-
-> On first run, the config file is automatically initialized.
-
-Configuration file locations (cross-platform):
-- Linux: `~/.config/terminal-aichat/config.json`
-- macOS: `~/Library/Application Support/terminal-aichat/config.json`
-- Windows: `%APPDATA%\terminal-aichat\config.json`
-
-The encryption key file is stored as `aes_key.bin` in the config directory (used to encrypt API keys and avoid plaintext storage).
-
-```sh
-# View config directory location
-aichat list
-
-# View config file content (Linux example)
-cat ~/.config/terminal-aichat/config.json
 ```
 
 ### Set Log Level

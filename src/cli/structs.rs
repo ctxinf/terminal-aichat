@@ -3,7 +3,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(
     name = "aichat",
-    version = "0.4.1",
+    version = "1.0.0",
     about = r#"
 A terminal AI/LLM chat tool
 
