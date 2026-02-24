@@ -4,33 +4,65 @@ use std::process::exit;
 use crate::cli::interactive::interactive_input;
 use crate::cli::structs::Cli;
 
-use crate::config::{Config, ConfigManager, print_providers, print_prompts, ProviderConfig, ModelConfig};
+use crate::config::{Config, ConfigManager, print_providers, print_prompts, print_config_location, ProviderConfig, ModelConfig};
 use crate::utils::StringUtilsTrait;
 use crate::utils::logger::set_log_level;
 use crate::{chat, log_debug, utils};
-use clap::Parser;
+use clap::{Parser, CommandFactory};
 use crossterm::style::Stylize;
 use utils::logger::{self};
 
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut custom_args = std::env::args().collect::<Vec<_>>();
+    let orig_args: Vec<String> = std::env::args().collect();
 
-    if !io::stdin().is_terminal() {
+    // First, get config path set up (we need it for help display)
+    let config_dir = ConfigManager::get_config_dir()?;
+
+    // Check for --config flag early to get the right config path
+    let custom_config_path = orig_args.windows(2)
+        .find(|w| w[0] == "--config")
+        .map(|w| w[1].clone());
+
+    let config_manager = ConfigManager::new(&config_dir, custom_config_path.as_deref())?;
+    let config_path = config_manager.get_config_path().to_path_buf();
+
+    // Check for no-args case first (orig_args includes program name)
+    if orig_args.len() == 1 {
+        // Print help manually
+        Cli::command().print_help()?;
+        println!();
+        print_config_location(&config_path);
+        std::process::exit(0);
+    }
+
+    // Now handle pipe input
+    let mut custom_args = orig_args.clone();
+    let has_pipe_input = !io::stdin().is_terminal();
+    if has_pipe_input {
         //if has pipe stdin
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
         custom_args.push(input.trim().to_string());
     }
 
-    let cli = Cli::parse_from(custom_args);
+    // Use try_parse_from so we can handle help ourselves
+    let cli = match Cli::try_parse_from(&custom_args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            // Print the clap error/help
+            e.print()?;
+            // Then print our config location
+            println!();
+            print_config_location(&config_path);
+            std::process::exit(e.exit_code());
+        }
+    };
 
-    let config_dir = ConfigManager::get_config_dir()?;
-    let config_manager = ConfigManager::new(&config_dir, cli.config.as_deref())?;
     let file_config = config_manager.load()?;
 
-    // 如果配置文件不存在，初始化默认配置
-    if !config_manager.exists() {
-        config_manager.save(&file_config)?;
+    // 如果配置文件不存在且使用默认路径，初始化默认配置（带注释）
+    if !config_manager.exists() && config_manager.is_default_path() {
+        config_manager.save_default_with_comments()?;
     }
 
     // 合并 CLI 和文件配置
@@ -42,7 +74,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle commands
     if cli.list {
-        handle_list_command(&file_config, config_manager.get_config_path()).await?;
+        handle_list_command(&file_config, &config_path).await?;
     } else {
         log_debug!("Handling chat command");
         let input = get_chat_input(&cli).await?;
@@ -71,7 +103,8 @@ async fn get_chat_input(cli: &Cli) -> Result<String, Box<dyn std::error::Error>>
 async fn handle_list_command(file_config: &Config, config_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     print_providers(file_config)?;
     print_prompts(file_config);
-    println!("\nconfig file location: {}", config_path.display().to_string().cyan());
+    println!();
+    print_config_location(config_path);
 
     Ok(())
 }
@@ -81,7 +114,7 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     let (provider_key, provider, model_key, model): (&String, &ProviderConfig, &String, &ModelConfig);
 
     let target_model = cli.model.as_ref().or_else(|| runtime_config.default_model.as_ref()).ok_or_else(|| {
-        let hint = format!("Edit config file or set default-model. Use {} to see config location.", "aichat -l".dark_green());
+        let hint = format!("Edit config file or set default-model. Use {} to see config location.", " -l".dark_green());
         eprintln!("❌ No model specified, please:\n{}", hint);
         exit(78);
     })?;
@@ -89,7 +122,7 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     // 遍历所有 providers 查找匹配的 model
     let (found_provider_key, found_model_key) = find_model_by_name(runtime_config, target_model)
         .ok_or_else(|| {
-            eprintln!("❌ Model '{}' not found in any provider", target_model);
+            eprintln!("❌ Model '{}' not found in config", target_model);
             exit(1);
         })?;
     provider_key = runtime_config.providers.keys().find(|k| *k == &found_provider_key).unwrap();
@@ -98,7 +131,7 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     model = provider.models.get(model_key).unwrap();
 
     let prompt_name = runtime_config.default_prompt.as_ref().ok_or_else(|| {
-        let hint = format!("Edit config file or set default-prompt. Use {} to see config location.", "aichat -l".dark_green());
+        let hint = format!("Edit config file or set default-prompt. Use {} to see config location.", " -l".dark_green());
         eprintln!("❌ No prompt config specified, please:\n{}", hint);
         exit(78);
     })?;

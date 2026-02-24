@@ -38,49 +38,54 @@ pub struct Config {
 
 impl Config {
     pub fn default() -> Self {
-        let mut providers = HashMap::new();
-        let mut models = HashMap::new();
-
-        models.insert(
-            "gpt-5-mini".to_string(),
-            ModelConfig {
-                name: Some("gpt-5-mini".to_string()),
-                temperature: None,
-            },
-        );
-
-        providers.insert(
-            "openai".to_string(),
-            ProviderConfig {
-                name: Some("OpenAI".to_string()),
-                base_url: "https://api.openai.com/v1".to_string(),
-                api_key: None,
-                models,
-            },
-        );
-
-        let mut prompts = HashMap::new();
-        prompts.insert(
-            "sample_prompt".to_string(),
-            PromptConfig {
-                content: r#"You are a terminal assistant.
-You are giving help to user in the terminal.
-Give concise responses whenever possible.
-Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.
-"#
-                .to_string(),
-            },
-        );
-
         Config {
-            providers,
-            prompts,
-            default_model: Some("gpt-5-mini".to_string()),
-            default_prompt: Some("sample_prompt".to_string()),
+            providers: HashMap::new(),
+            prompts: HashMap::new(),
+            default_model: None,
+            default_prompt: None,
             disable_stream: false,
             pure: false,
             verbose: false,
         }
+    }
+
+    /// Get default config content with comments (JSONC format)
+    pub fn default_config_with_comments() -> String {
+        r#"{
+  "providers": {
+  // Example provider configuration (uncomment and modify to use)
+   /*
+    "openai": {
+      "name": "OpenAI",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "sk-...",  // Replace with your API key
+      "models": {
+        "gpt-4o": {
+          "name": "gpt-4o",
+          "temperature": 0.7
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini",
+          "temperature": 0.5
+        }
+      }
+    }*/
+  },
+  "default-model": null,
+  "prompts": {
+    "sample_prompt": {
+      "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"
+    },
+    "concise": {
+      "content": "Use plain text, give extremely concise output"
+    }
+  },
+  "default-prompt": "sample_prompt",
+  "disable-stream": false,
+  "pure": false,
+  "verbose": false
+}
+"#.to_string()
     }
 }
 

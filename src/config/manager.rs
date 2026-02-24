@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 /// 配置文件管理器 - 只负责I/O操作
 pub struct ConfigManager {
     config_path: PathBuf,
+    is_default_path: bool,
 }
 
 impl ConfigManager {
@@ -24,20 +25,28 @@ impl ConfigManager {
             fs::create_dir_all(config_dir)?;
         }
 
-        let config_path = if let Some(path) = custom_path {
-            PathBuf::from(path)
+        let (config_path, is_default_path) = if let Some(path) = custom_path {
+            (PathBuf::from(path), false)
         } else {
-            // 先尝试 .jsonc，再尝试 .json
+            // 先尝试 .jsonc，再尝试 .json，默认使用 .jsonc
             let jsonc_path = config_dir.join("config.jsonc");
             let json_path = config_dir.join("config.json");
             if jsonc_path.exists() {
-                jsonc_path
+                (jsonc_path, true)
+            } else if json_path.exists() {
+                (json_path, true)
             } else {
-                json_path
+                // 默认使用 .jsonc
+                (jsonc_path, true)
             }
         };
 
-        Ok(Self { config_path })
+        Ok(Self { config_path, is_default_path })
+    }
+
+    /// 是否使用默认配置路径
+    pub fn is_default_path(&self) -> bool {
+        self.is_default_path
     }
 
     /// 从文件加载配置
@@ -55,10 +64,10 @@ impl ConfigManager {
         Ok(config)
     }
 
-    /// 保存配置到文件
-    pub fn save(&self, config: &Config) -> io::Result<()> {
-        let content = serde_json::to_string_pretty(config)?;
-        fs::write(&self.config_path, content)
+
+    /// 保存默认配置（带注释）到文件
+    pub fn save_default_with_comments(&self) -> io::Result<()> {
+        fs::write(&self.config_path, Config::default_config_with_comments())
     }
 
     /// 配置文件是否存在

@@ -173,39 +173,39 @@ A more complete example with multiple models:
    - [x] 删除 `set`、`use`、`delete` 子命令, 保留 `list` 子命令（后续实现: ）,保留 `--model`/`-m` 参数(后续实现)，
    - [x] 启用 `--config` 参数，允许手动指定配置文件路径
    - [x] 在 `-h`/`--help` 输出中提示默认配置文件位置
-   - [ ] 更新 CLI 的 about 信息
+   - [x] 更新 CLI 的 about 信息
 
 2. **配置文件解析改革**
-   - [ ] 添加 `jsonc` 依赖库
-   - [ ] 修改配置读取逻辑：先尝试读取 `.json`，再尝试读取 `.jsonc`
-   - [ ] 使用 jsonc 库解析配置文件
+   - [x] 添加 `jsonc` 依赖库
+   - [x] 修改配置读取逻辑：先尝试读取 `.json`，再尝试读取 `.jsonc`
+   - [x] 使用 jsonc 库解析配置文件
 
 3. **Model 配置结构完全更改**
-   - [ ] 重新设计 `Config` 结构体
-   - [ ] 新结构：`providers: { "<provider_key>": { name?: string, baseUrl: string, apiKey: ..., models: { "<model_key>": { name?: string, temperature: ... } } } }`
-   - [ ] provider 的 name 可以为空，为空时以 key 作为 name
-   - [ ] model 的 name 可以为空，为空时以 key 作为 name
-   - [ ] 更新默认配置生成逻辑
-   - [ ] 保持 `prompts` 配置结构不变
-   - [ ] 保持其他参数（`disable-stream`、`pure`、`verbose`）不变
+   - [x] 重新设计 `Config` 结构体
+   - [x] 新结构：`providers: { "<provider_key>": { name?: string, baseUrl: string, apiKey: ..., models: { "<model_key>": { name?: string, temperature: ... } } } }`
+   - [x] provider 的 name 可以为空，为空时以 key 作为 name
+   - [x] model 的 name 可以为空，为空时以 key 作为 name
+   - [x] 更新默认配置生成逻辑
+   - [x] 保持 `prompts` 配置结构不变
+   - [x] 保持其他参数（`disable-stream`、`pure`、`verbose`）不变
 
 4. **配置管理模块重构**
-   - [ ] 删除 `builder.rs`（不再需要 ConfigBuilder）
-   - [ ] 删除 `resolver.rs`（简化配置合并逻辑）
-   - [ ] 修改 `display.rs` 以适配新的 list 命令显示逻辑（provider-name: - model-names）
-   - [ ] 重构 `manager.rs` 以适应新的配置结构
-   - [ ] 更新 `structs.rs` 定义新的配置结构
+   - [x] 删除 `builder.rs`（不再需要 ConfigBuilder）
+   - [x] 删除 `resolver.rs`（简化配置合并逻辑）
+   - [x] 修改 `display.rs` 以适配新的 list 命令显示逻辑（provider-name: - model-names）
+   - [x] 重构 `manager.rs` 以适应新的配置结构
+   - [x] 更新 `structs.rs` 定义新的配置结构
 
 5. **Chat 模块适配**
-   - [ ] 更新 `chat.rs` 以适配新的 provider/model 配置结构
-   - [ ] 更新 API 调用逻辑
+   - [x] 更新 `chat.rs` 以适配新的 provider/model 配置结构
+   - [x] 更新 API 调用逻辑
 
 6. **CLI 处理模块更新**
-   - [ ] 重构 `cli/cli.rs` 删除 `set`/`use`/`delete` 子命令处理逻辑
-   - [ ] 修改 `list` 子命令实现，显示新的配置结构, 显示简要配置列表：provider-name: - model-names
-   - [ ] 更新 `cli/structs.rs` 移除 `set`/`use`/`delete` 子命令定义
-   - [ ] 实现 `--model`/`-m` 参数的新逻辑：遍历 providers  的所有模型，直到命中一个
-   - [ ] 保持 `interactive.rs` 和 `response_render.rs` 不变
+   - [x] 重构 `cli/cli.rs` 删除 `set`/`use`/`delete` 子命令处理逻辑
+   - [x] 修改 `list` 子命令实现，显示新的配置结构, 显示简要配置列表：provider-name: - model-names
+   - [x] 更新 `cli/structs.rs` 移除 `set`/`use`/`delete` 子命令定义
+   - [x] 实现 `--model`/`-m` 参数的新逻辑：遍历 providers  的所有模型，直到命中一个
+   - [x] 保持 `interactive.rs` 和 `response_render.rs` 不变
 
 7. **更新示例配置**
    - [ ] 更新 CLAUDE.md 中的示例配置为新格式

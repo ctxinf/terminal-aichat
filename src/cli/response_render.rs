@@ -17,7 +17,6 @@ use crate::{log_debug, log_trace};
 #[derive(Clone)]
 pub struct RenderConfig {
     pub pure: bool,
-    pub model_config_name: String,
     pub model_name: String,
     pub prompt_config_name: String,
     /// 打字机效果的速度（字符/秒）
@@ -76,10 +75,9 @@ impl ResponseRenderer {
     /// 渲染状态栏（固定在status_row）
     fn render_status_bar(config: &RenderConfig) {
         println!(
-            "{}  {}: {}({})    {}: {}    {}",
+            "{}  {}: {}    {}: {}    {}",
             " > ".on_green(),
             "model".dark_green().bold(),
-            config.model_config_name.as_str().blue().bold(),
             config.model_name.as_str().cyan().bold(),
             "prompt".dark_green().bold(),
             config.prompt_config_name.as_str().blue().bold(),

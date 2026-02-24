@@ -1,5 +1,12 @@
 use super::Config;
+use crossterm::style::Stylize;
 use std::io;
+use std::path::Path;
+
+/// 打印配置文件位置
+pub fn print_config_location(config_path: &Path) {
+    println!("config file location: {}", config_path.display().to_string().cyan());
+}
 
 /// 打印配置列表
 pub fn print_providers(config: &Config) -> io::Result<()> {
@@ -33,9 +40,6 @@ pub fn print_providers(config: &Config) -> io::Result<()> {
 
             let default_mark = if is_default_model { " *" } else { "" };
             print!("    - {}", model_name);
-            if model_name != *model_key {
-                print!(" ({})", model_key);
-            }
             if let Some(temp) = model.temperature {
                 print!(" [temperature: {}]", temp);
             }

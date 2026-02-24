@@ -8,8 +8,12 @@ use clap::Parser;
 A terminal AI/LLM chat tool
 
 aichat [MESSAGE]   # directly chat
-aichat --list       # view configs"#,
-    arg_required_else_help = true
+aichat --list       # view configs
+
+Edit the config file to setup providers and models."#,
+    arg_required_else_help = false,
+    disable_help_flag = false,
+    disable_version_flag = false
 )]
 pub struct Cli {
     /// List configurations

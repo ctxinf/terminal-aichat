@@ -17,7 +17,7 @@ use futures::StreamExt;
 
 pub async fn completion(
     input: &str,
-    provider_key: &str,
+    _provider_key: &str,
     provider: &ProviderConfig,
     model_key: &str,
     model: &ModelConfig,
@@ -29,12 +29,11 @@ pub async fn completion(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _ = verbose;
     let client = create_client(provider);
-    let model_name = model.get_name(model_key);
+    let model_display_name = model.get_name(model_key);
     // 创建渲染器配置
     let config = RenderConfig {
         pure,
-        model_config_name: format!("{}/{}", provider_key, model_key),
-        model_name: model_name.to_string(),
+        model_name: model_display_name.to_string(),
         prompt_config_name: prompt_config_name.to_string(),
         type_speed: 30, // 50字/秒
         disable_stream: disable_stream,
@@ -47,7 +46,7 @@ pub async fn completion(
         log_debug!("Start send chat request.");
         let response = client
             .chat()
-            .create(create_request(input, &prompt_config, &model_name, model))
+            .create(create_request(input, &prompt_config, model_key, model))
             .await?;
         log_debug!("Received chat response.");
 
@@ -59,7 +58,7 @@ pub async fn completion(
     } else {
         let mut stream = client
             .chat()
-            .create_stream(create_request(input, &prompt_config, &model_name, model))
+            .create_stream(create_request(input, &prompt_config, model_key, model))
             .await?;
 
         log_debug!("Start receive stream message.");
@@ -116,11 +115,11 @@ fn create_client(provider: &ProviderConfig) -> Client<OpenAIConfig> {
 fn create_request(
     input: &str,
     prompt_config: &PromptConfig,
-    model_name: &str,
+    model_key: &str,
     model: &ModelConfig,
 ) -> CreateChatCompletionRequest {
     let mut builder = CreateChatCompletionRequestArgs::default();
-    builder.model(model_name);
+    builder.model(model_key);
 
     match model.temperature {
         Some(val) => {
