@@ -3,10 +3,18 @@ use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelConfig {
-    pub model_name: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>, // This will be encrypted in the config file
+    pub name: Option<String>,
     pub temperature: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProviderConfig {
+    pub name: Option<String>,
+    #[serde(rename = "baseURL")]
+    pub base_url: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: Option<String>,
+    pub models: HashMap<String, ModelConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -16,8 +24,10 @@ pub struct PromptConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub models: HashMap<String, ModelConfig>,
+    pub providers: HashMap<String, ProviderConfig>,
     pub prompts: HashMap<String, PromptConfig>,
+    #[serde(rename = "default-provider")]
+    pub default_provider: Option<String>,
     #[serde(rename = "default-model")]
     pub default_model: Option<String>,
     #[serde(rename = "default-prompt")]
@@ -28,40 +38,63 @@ pub struct Config {
     pub verbose: bool,
 }
 
-impl ModelConfig {
-    /// 合并配置,优先使用self的值
-    pub fn merge_with(self, base: &ModelConfig) -> Self {
-        Self {
-            model_name: self.model_name.or_else(|| base.model_name.clone()),
-            base_url: self.base_url.or_else(|| base.base_url.clone()),
-            api_key: self.api_key.or_else(|| base.api_key.clone()),
-            temperature: self.temperature.or(base.temperature),
-        }
-    }
-}
-
-impl PromptConfig {
-    pub fn merge_with(self, base: &PromptConfig) -> Self {
-        Self {
-            content: if self.content.is_empty() {
-                base.content.clone()
-            } else {
-                self.content
-            },
-        }
-    }
-}
-
 impl Config {
     pub fn default() -> Self {
+        let mut providers = HashMap::new();
+        let mut models = HashMap::new();
+
+        models.insert(
+            "gpt-5-mini".to_string(),
+            ModelConfig {
+                name: Some("gpt-5-mini".to_string()),
+                temperature: None,
+            },
+        );
+
+        providers.insert(
+            "openai".to_string(),
+            ProviderConfig {
+                name: Some("OpenAI".to_string()),
+                base_url: "https://api.openai.com/v1".to_string(),
+                api_key: None,
+                models,
+            },
+        );
+
+        let mut prompts = HashMap::new();
+        prompts.insert(
+            "sample_prompt".to_string(),
+            PromptConfig {
+                content: r#"You are a terminal assistant.
+You are giving help to user in the terminal.
+Give concise responses whenever possible.
+Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.
+"#
+                .to_string(),
+            },
+        );
+
         Config {
-            models: HashMap::new(),
-            prompts: HashMap::new(),
-            default_model: None,
-            default_prompt: None,
+            providers,
+            prompts,
+            default_provider: Some("openai".to_string()),
+            default_model: Some("gpt-5-mini".to_string()),
+            default_prompt: Some("sample_prompt".to_string()),
             disable_stream: false,
             pure: false,
             verbose: false,
         }
+    }
+}
+
+impl ProviderConfig {
+    pub fn get_name(&self, key: &str) -> String {
+        self.name.as_ref().unwrap_or(&key.to_string()).clone()
+    }
+}
+
+impl ModelConfig {
+    pub fn get_name(&self, key: &str) -> String {
+        self.name.as_ref().unwrap_or(&key.to_string()).clone()
     }
 }

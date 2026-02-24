@@ -1,7 +1,7 @@
 use crate::cli::response_render::{RenderConfig, ResponseRenderer};
 use crate::utils::StringUtils;
 use crate::{
-    config::{ModelConfig, PromptConfig},
+    config::{ProviderConfig, ModelConfig, PromptConfig},
     log_debug,
 };
 use async_openai::{
@@ -17,23 +17,25 @@ use futures::StreamExt;
 
 pub async fn completion(
     input: &str,
-    model_config_name: String,
-    model_config: &ModelConfig,
-    prompt_config_name: String,
+    provider_key: &str,
+    provider: &ProviderConfig,
+    model_key: &str,
+    model: &ModelConfig,
+    prompt_config_name: &str,
     prompt_config: &PromptConfig,
     pure: bool,
     disable_stream: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _ = verbose;
-    let client = create_client(&model_config);
-    let model_name = model_config.model_name.as_ref().unwrap();
+    let client = create_client(provider);
+    let model_name = model.get_name(model_key);
     // 创建渲染器配置
     let config = RenderConfig {
         pure,
-        model_config_name: model_config_name,
+        model_config_name: format!("{}/{}", provider_key, model_key),
         model_name: model_name.to_string(),
-        prompt_config_name,
+        prompt_config_name: prompt_config_name.to_string(),
         type_speed: 30, // 50字/秒
         disable_stream: disable_stream,
     };
@@ -45,7 +47,7 @@ pub async fn completion(
         log_debug!("Start send chat request.");
         let response = client
             .chat()
-            .create(create_request(input, &prompt_config, &model_config))
+            .create(create_request(input, &prompt_config, &model_name, model))
             .await?;
         log_debug!("Received chat response.");
 
@@ -53,17 +55,11 @@ pub async fn completion(
             message_tx
                 .send(choice.message.content.clone().unwrap_or(String::from("null")))
                 .await?;
-            // if let Err(err) = message_tx
-            //     .send(choice.message.content.clone().unwrap_or(String::from("null")))
-            //     .await
-            // {
-            //     eprintln!("send message failed: {}", err);
-            // };
         }
     } else {
         let mut stream = client
             .chat()
-            .create_stream(create_request(input, &prompt_config, &model_config))
+            .create_stream(create_request(input, &prompt_config, &model_name, model))
             .await?;
 
         log_debug!("Start receive stream message.");
@@ -100,32 +96,33 @@ pub async fn completion(
     Ok(())
 }
 
-fn create_client(model_config: &ModelConfig) -> Client<OpenAIConfig> {
+fn create_client(provider: &ProviderConfig) -> Client<OpenAIConfig> {
     let env_api_key = std::env::var("OPENAI_API_KEY");
     let final_api_key = match env_api_key {
         Ok(val) => {
             log_debug!("use env OPEN_API_KEY to override api-key.");
             val
         }
-        Err(_) => model_config.api_key.clone().unwrap_or(String::new()),
+        Err(_) => provider.api_key.clone().unwrap_or(String::new()),
     };
     log_debug!("final used api-key: {}", StringUtils::mask_sensitive(&final_api_key));
     Client::with_config(
         OpenAIConfig::default()
             .with_api_key(final_api_key)
-            .with_api_base(model_config.base_url.as_ref().unwrap()),
+            .with_api_base(&provider.base_url),
     )
 }
 
 fn create_request(
     input: &str,
     prompt_config: &PromptConfig,
-    model_config: &ModelConfig,
+    model_name: &str,
+    model: &ModelConfig,
 ) -> CreateChatCompletionRequest {
     let mut builder = CreateChatCompletionRequestArgs::default();
-    builder.model(model_config.model_name.as_ref().unwrap());
+    builder.model(model_name);
 
-    match model_config.temperature {
+    match model.temperature {
         Some(val) => {
             builder.temperature(val);
         }
