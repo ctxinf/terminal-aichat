@@ -60,18 +60,15 @@ impl Config {
       "baseURL": "https://api.openai.com/v1",
       "apiKey": "sk-...",  // Replace with your API key
       "models": {
-        "gpt-4o": {
-          "name": "gpt-4o",
+        "gpt-5.4-codex": {  // model key used in request body: { "model": "<this_key>" }
+          "name": "my-fav-codex-5.4", // display name for you (optional)
           "temperature": 0.7
         },
-        "gpt-5-mini": {
-          "name": "gpt-5-mini",
-          "temperature": 0.5
-        }
+        "gpt-5-mini": {},
       }
     }*/
   },
-  "default-model": null,
+  "default-model": null, // key of model, with provider prefix optionally. e.g. "gpt-5.4-codex", "openai/gpt-5-mini"
   "prompts": {
     "sample_prompt": {
       "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"

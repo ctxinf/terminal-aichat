@@ -130,8 +130,8 @@ aichat -l
       "baseURL": "https://openrouter.ai/api/v1",
       "apiKey": "sk-or-...",
       "models": {
-        "llama-3": {
-          "name": "meta-llama/llama-3-70b-instruct",
+        "meta-llama/llama-3-70b-instruct": {
+          "name": "llama-3",
           "temperature": 0.3
         }
       }
@@ -153,11 +153,17 @@ aichat -l
 ### 指定模型
 
 ```sh
-# 使用特定模型（会搜索所有providers）
+# 使用特定模型 selector（会搜索所有 providers）
+# - model key: "gpt-4o"
+# - 或 provider/model_key: "openrouter/meta-llama/llama-3-70b-instruct"
 aichat --model gpt-4o "Hello?"
 
 # 或者短格式
 aichat -m gpt-5-mini "Hello?"
+
+# 当多个 provider 里存在相同的 model key，或者 model key 本身包含 '/' 时，
+# 使用 provider/model_key 来避免歧义：
+aichat -m openrouter/meta-llama/llama-3-70b-instruct "Hello?"
 ```
 
 ### 指定提示词

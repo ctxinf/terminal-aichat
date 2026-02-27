@@ -137,8 +137,8 @@ Example config structure:
       "baseURL": "https://openrouter.ai/api/v1",
       "apiKey": "sk-or-...",
       "models": {
-        "llama-3": {
-          "name": "meta-llama/llama-3-70b-instruct",
+        "meta-llama/llama-3-70b-instruct": {
+          "name": "llama-3",
           "temperature": 0.3
         }
       }
@@ -160,11 +160,17 @@ Example config structure:
 ### Specify a Model
 
 ```sh
-# Use a specific model (searches all providers)
+# Use a specific model selector (searches all providers)
+# - model key: "gpt-4o"
+# - or provider/model_key: "openrouter/meta-llama/llama-3-70b-instruct"
 aichat --model gpt-4o "Hello?"
 
 # Or short form
 aichat -m gpt-5-mini "Hello?"
+
+# When model keys conflict across providers, or when model keys contain '/',
+# use provider/model_key to disambiguate:
+aichat -m openrouter/meta-llama/llama-3-70b-instruct "Hello?"
 ```
 
 ### Specify a Prompt

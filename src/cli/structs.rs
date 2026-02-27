@@ -3,7 +3,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(
     name = "aichat",
-    version = "1.0.0",
+    version = "1.0.4",
     about = r#"
 A terminal AI/LLM chat tool
 
@@ -20,7 +20,7 @@ pub struct Cli {
     #[arg(long, short)]
     pub list: bool,
 
-    /// Specify model configuration to use (searches all providers)
+    /// Specify model selector to use (model key; optionally provider/model_key)
     #[arg(short, long)]
     pub model: Option<String>,
 

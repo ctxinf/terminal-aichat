@@ -12,6 +12,18 @@ use clap::{Parser, CommandFactory};
 use crossterm::style::Stylize;
 use utils::logger::{self};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ModelLookupError {
+    NotFound { selector: String },
+    ProviderScopedNotFound {
+        selector: String,
+        provider_key: String,
+        model_key: String,
+    },
+    AmbiguousKey { model_key: String, providers: Vec<String> },
+    AmbiguousName { model_name: String, matches: Vec<String> },
+}
+
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let orig_args: Vec<String> = std::env::args().collect();
 
@@ -120,11 +132,51 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     })?;
 
     // 遍历所有 providers 查找匹配的 model
-    let (found_provider_key, found_model_key) = find_model_by_name(runtime_config, target_model)
-        .ok_or_else(|| {
-            eprintln!("❌ Model '{}' not found in config", target_model);
+    let (found_provider_key, found_model_key) = match find_model_by_selector(runtime_config, target_model) {
+        Ok(found) => found,
+        Err(err) => {
+            match err {
+                ModelLookupError::NotFound { selector } => {
+                    eprintln!(
+                        "❌ Model '{}' not found in config. Use {} to list available models.",
+                        selector,
+                        "aichat -l".dark_green()
+                    );
+                }
+                ModelLookupError::ProviderScopedNotFound {
+                    selector,
+                    provider_key,
+                    model_key,
+                } => {
+                    eprintln!(
+                        "❌ Model key '{}' not found under provider '{}'. (selector: '{}')\nTip: If your model key contains '/', use '<provider>/<model_key>' to disambiguate. Use {} to list models.",
+                        model_key,
+                        provider_key,
+                        selector,
+                        "aichat -l".dark_green()
+                    );
+                }
+                ModelLookupError::AmbiguousKey { model_key, providers } => {
+                    eprintln!(
+                        "❌ Model key '{}' exists in multiple providers: {}.\nTip: Use '<provider>/{}' to select one. Use {} to list models.",
+                        model_key,
+                        providers.join(", "),
+                        model_key,
+                        "aichat -l".dark_green()
+                    );
+                }
+                ModelLookupError::AmbiguousName { model_name, matches } => {
+                    eprintln!(
+                        "❌ Model name '{}' matches multiple models: {}.\nTip: Use '<provider>/<model_key>' (from the list) to select one. Use {} to list models.",
+                        model_name,
+                        matches.join(", "),
+                        "aichat -l".dark_green()
+                    );
+                }
+            }
             exit(1);
-        })?;
+        }
+    };
     provider_key = runtime_config.providers.keys().find(|k| *k == &found_provider_key).unwrap();
     provider = runtime_config.providers.get(provider_key).unwrap();
     model_key = provider.models.keys().find(|k| *k == &found_model_key).unwrap();
@@ -167,25 +219,80 @@ async fn handle_chat_command(runtime_config: &Config, cli: &Cli, input: String) 
     Ok(())
 }
 
-/// 在所有 providers 中查找 model，返回找到的 provider_key 和 model_key
-fn find_model_by_name(config: &Config, name: &str) -> Option<(String, String)> {
-    // 先尝试精确匹配 model key
-    for (provider_key, provider) in &config.providers {
-        if provider.models.contains_key(name) {
-            return Some((provider_key.clone(), name.to_string()));
-        }
-    }
-    // 再尝试匹配 model name
-    for (provider_key, provider) in &config.providers {
-        for (model_key, model) in &provider.models {
-            if let Some(model_name) = &model.name {
-                if model_name == name {
-                    return Some((provider_key.clone(), model_key.clone()));
+/// Find model by selector:
+/// - `model_key` (global search across providers)
+/// - `provider_key/model_key` (provider-scoped)
+/// - fallback to `model.name` if no key matched
+fn find_model_by_selector(config: &Config, selector: &str) -> Result<(String, String), ModelLookupError> {
+    if let Some((provider_key, rest)) = selector.split_once('/') {
+        if let Some(provider) = config.providers.get(provider_key) {
+            if provider.models.contains_key(rest) {
+                return Ok((provider_key.to_string(), rest.to_string()));
+            }
+
+            // Try treating the whole selector as a model key/name, because model keys (or names)
+            // may contain '/' and the prefix might coincidentally match a provider key.
+            match find_model_global(config, selector) {
+                Ok(found) => return Ok(found),
+                Err(ModelLookupError::NotFound { .. }) => {
+                    return Err(ModelLookupError::ProviderScopedNotFound {
+                        selector: selector.to_string(),
+                        provider_key: provider_key.to_string(),
+                        model_key: rest.to_string(),
+                    });
                 }
+                Err(e) => return Err(e),
             }
         }
     }
-    None
+
+    find_model_global(config, selector)
+}
+
+fn find_model_global(config: &Config, selector: &str) -> Result<(String, String), ModelLookupError> {
+    let mut key_matches: Vec<String> = Vec::new();
+    for (provider_key, provider) in &config.providers {
+        if provider.models.contains_key(selector) {
+            key_matches.push(provider_key.clone());
+        }
+    }
+    match key_matches.len() {
+        1 => return Ok((key_matches[0].clone(), selector.to_string())),
+        n if n > 1 => {
+            key_matches.sort();
+            return Err(ModelLookupError::AmbiguousKey {
+                model_key: selector.to_string(),
+                providers: key_matches,
+            });
+        }
+        _ => {}
+    }
+
+    let mut name_matches: Vec<(String, String)> = Vec::new();
+    for (provider_key, provider) in &config.providers {
+        for (model_key, model) in &provider.models {
+            if model.name.as_deref() == Some(selector) {
+                name_matches.push((provider_key.clone(), model_key.clone()));
+            }
+        }
+    }
+    match name_matches.len() {
+        1 => Ok((name_matches[0].0.clone(), name_matches[0].1.clone())),
+        n if n > 1 => {
+            let mut display: Vec<String> = name_matches
+                .into_iter()
+                .map(|(p, m)| format!("{}/{}", p, m))
+                .collect();
+            display.sort();
+            Err(ModelLookupError::AmbiguousName {
+                model_name: selector.to_string(),
+                matches: display,
+            })
+        }
+        _ => Err(ModelLookupError::NotFound {
+            selector: selector.to_string(),
+        }),
+    }
 }
 
 /// 合并 CLI 参数和文件配置
@@ -202,5 +309,108 @@ fn merge_config(file_config: &Config, cli: &Cli) -> Config {
         disable_stream: cli.disable_stream || file_config.disable_stream,
         pure: cli.pure || file_config.pure,
         verbose: cli.verbose || file_config.verbose,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn provider(base_url: &str, models: Vec<(&str, Option<&str>)>) -> ProviderConfig {
+        ProviderConfig {
+            name: None,
+            base_url: base_url.to_string(),
+            api_key: None,
+            models: models
+                .into_iter()
+                .map(|(k, name)| {
+                    (
+                        k.to_string(),
+                        ModelConfig {
+                            name: name.map(|s| s.to_string()),
+                            temperature: None,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn config_with_providers(providers: Vec<(&str, ProviderConfig)>) -> Config {
+        Config {
+            providers: providers
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+            prompts: Default::default(),
+            default_model: None,
+            default_prompt: None,
+            disable_stream: false,
+            pure: false,
+            verbose: false,
+        }
+    }
+
+    #[test]
+    fn selector_provider_scoped_match() {
+        let cfg = config_with_providers(vec![(
+            "openai",
+            provider("https://api.openai.com/v1", vec![("gpt-5-mini", None)]),
+        )]);
+        let found = find_model_by_selector(&cfg, "openai/gpt-5-mini").unwrap();
+        assert_eq!(found, ("openai".to_string(), "gpt-5-mini".to_string()));
+    }
+
+    #[test]
+    fn selector_provider_prefix_fallback_to_global_key() {
+        let cfg = config_with_providers(vec![
+            ("openai", provider("https://api.openai.com/v1", vec![("gpt-4o", None)])),
+            (
+                "openrouter",
+                provider(
+                    "https://openrouter.ai/api/v1",
+                    vec![("openai/gpt-5-mini", Some("or-gpt-5-mini"))],
+                ),
+            ),
+        ]);
+
+        let found = find_model_by_selector(&cfg, "openai/gpt-5-mini").unwrap();
+        assert_eq!(
+            found,
+            ("openrouter".to_string(), "openai/gpt-5-mini".to_string())
+        );
+    }
+
+    #[test]
+    fn selector_ambiguous_key_requires_provider_prefix() {
+        let cfg = config_with_providers(vec![
+            ("a", provider("http://a", vec![("gpt-5-mini", None)])),
+            ("b", provider("http://b", vec![("gpt-5-mini", None)])),
+        ]);
+
+        let err = find_model_by_selector(&cfg, "gpt-5-mini").unwrap_err();
+        assert!(matches!(err, ModelLookupError::AmbiguousKey { .. }));
+    }
+
+    #[test]
+    fn selector_fallback_to_model_name() {
+        let cfg = config_with_providers(vec![(
+            "local",
+            provider("http://localhost:11434/v1", vec![("llama3.1", Some("llama"))]),
+        )]);
+
+        let found = find_model_by_selector(&cfg, "llama").unwrap();
+        assert_eq!(found, ("local".to_string(), "llama3.1".to_string()));
+    }
+
+    #[test]
+    fn selector_provider_scoped_not_found_error() {
+        let cfg = config_with_providers(vec![(
+            "openai",
+            provider("https://api.openai.com/v1", vec![("gpt-5-mini", None)]),
+        )]);
+
+        let err = find_model_by_selector(&cfg, "openai/does-not-exist").unwrap_err();
+        assert!(matches!(err, ModelLookupError::ProviderScopedNotFound { .. }));
     }
 }

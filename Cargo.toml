@@ -4,7 +4,7 @@ description = "A cli for AI/LLM chat in terminal. Extremely simple and easy to u
 authors = ["slow-groovin"]
 repository = "https://github.com/slow-groovin/terminal-aichat"
 license = "MIT"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2024"
 homepage = "https://github.com/slow-groovin/terminal-aichat"
 
