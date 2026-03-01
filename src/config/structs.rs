@@ -90,6 +90,10 @@ impl ProviderConfig {
     pub fn get_name(&self, key: &str) -> String {
         self.name.as_ref().unwrap_or(&key.to_string()).clone()
     }
+
+    pub fn get_base_url(&self) -> String {
+        self.base_url.trim_end_matches('/').to_string()
+    }
 }
 
 impl ModelConfig {

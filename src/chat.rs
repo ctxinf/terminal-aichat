@@ -108,7 +108,7 @@ fn create_client(provider: &ProviderConfig) -> Client<OpenAIConfig> {
     Client::with_config(
         OpenAIConfig::default()
             .with_api_key(final_api_key)
-            .with_api_base(&provider.base_url),
+            .with_api_base(&provider.get_base_url()),
     )
 }
 
