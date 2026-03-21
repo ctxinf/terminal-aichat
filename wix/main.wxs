@@ -62,7 +62,7 @@
         Id='*'
         Name='terminal-aichat'
         UpgradeCode='82D9C73C-A524-40CF-B7BB-F4535F1BB605'
-        Manufacturer='slow-groovin'
+        Manufacturer='ctxinf'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
@@ -70,7 +70,7 @@
         <Package Id='*'
             Keywords='Installer'
             Description='A cli for AI/LLM chat in terminal. Extremely simple and easy to use. Using OpenAI-compatible `/v1/chat/completion` API'
-            Manufacturer='slow-groovin'
+            Manufacturer='ctxinf'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'
@@ -173,7 +173,7 @@
         <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
         <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
 
-        <Property Id='ARPHELPLINK' Value='https://github.com/slow-groovin/terminal-aichat'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/ctxinf/terminal-aichat'/>
         
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>

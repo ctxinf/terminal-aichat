@@ -25,7 +25,7 @@ aichat <INPUT MESSAGE>
 
 #### sh
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/slow-groovin/terminal-aichat/releases/latest/download/terminal-aichat-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/ctxinf/terminal-aichat/releases/latest/download/terminal-aichat-installer.sh | sh
 ```
 
 #### cargo
@@ -35,7 +35,7 @@ cargo install terminal-aichat
 
 #### homebrew
 ```sh
-brew install slow-groovin/tap/terminal-aichat
+brew install ctxinf/tap/terminal-aichat
 ```
 
 #### ~~npm~~
@@ -47,11 +47,11 @@ npm install terminal-aichat@latest
 
 #### powershell
 ```sh
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/slow-groovin/terminal-aichat/releases/latest/download/terminal-aichat-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/ctxinf/terminal-aichat/releases/latest/download/terminal-aichat-installer.ps1 | iex"
 ```
 
 #### binary
-or download executable binaries directly in [Release](https://github.com/slow-groovin/terminal-aichat/releases) page.
+or download executable binaries directly in [Release](https://github.com/ctxinf/terminal-aichat/releases) page.
 
 ### Prerequisites
 
