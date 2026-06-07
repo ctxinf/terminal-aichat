@@ -10,7 +10,7 @@ pub enum IntegrationShell {
 #[derive(Parser)]
 #[command(
     name = "aichat",
-    version = "1.0.6",
+    version = "1.1.1",
     about = r#"
 A terminal AI/LLM chat tool
 

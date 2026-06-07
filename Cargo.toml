@@ -4,7 +4,7 @@ description = "A cli for AI/LLM chat in terminal. Extremely simple and easy to u
 authors = ["ctxinf"]
 repository = "https://github.com/ctxinf/terminal-aichat"
 license = "MIT"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2024"
 homepage = "https://github.com/ctxinf/terminal-aichat"
 
