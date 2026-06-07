@@ -2,8 +2,9 @@
 #
 # Provides:
 #   q  <message>    ask AI; if reply is a command, pre-fill an editable prompt
-#   qe <message>    ask AI; if reply is a command, echo it as a `# …`
-#                   comment and execute it (auto-debug for safety)
+#   qe <message>    ask AI; if a command is parsed, echo it as `# …`
+#                   comments then execute it; if parsing fails, dump the
+#                   full reply between `###` markers (no execution)
 #   command | q     pipe stdin as additional context
 #   q --debug ...   prepend the raw model reply as a comment line (`q` only)
 #
@@ -80,15 +81,21 @@ _aichat_ask_exec() {
   cmd=$(printf '%s' "$output" | _aichat_extract_cmd)
 
   if [ -n "$cmd" ]; then
-    # Always echo the raw model reply as a `# …` comment before executing.
-    # Running model-generated commands is risky; surfacing the original
-    # reasoning gives the user a last chance to spot something wrong.
-    local comment
-    comment=$(printf '%s' "$output" | sed 's/^/# /' | tr '\n' ' ')
-    printf '%s\n' "$comment"
+    # Parse succeeded: echo the resolved command as `# …` comments before
+    # executing (multi-line aware). Running model-generated commands is risky;
+    # this gives the user a last chance to spot something wrong.
+    # When stdout is a tty, color the comment lines like a real shell comment
+    # (bright-black / dim grey, matching most syntax-highlighting themes).
+    if [ -t 1 ]; then
+      local _dim=$'\e[90m' _rst=$'\e[0m'
+      printf '%s\n' "$cmd" | sed "s/^/${_dim}# /;s/\$/${_rst}/"
+    else
+      printf '%s\n' "$cmd" | sed 's/^/# /'
+    fi
     history -s -- "$cmd"
     eval "$cmd"
   else
+    # Parse failed: dump the full model reply between markers.
     printf '###############################################\n'
     printf '%s\n' "$output"
     printf '###############################################\n'

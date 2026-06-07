@@ -2,8 +2,9 @@
 #
 # Provides:
 #   q  <message>    ask AI; if reply is a command, put it into the buffer
-#   qe <message>    ask AI; if reply is a command, echo it as a `# …`
-#                   comment and execute it (auto-debug for safety)
+#   qe <message>    ask AI; if a command is parsed, echo it as `# …`
+#                   comments then execute it; if parsing fails, dump the
+#                   full reply between `###` markers (no execution)
 #   command | q     pipe stdin as additional context
 #   q --debug ...   prepend the raw model reply as a comment line (`q` only)
 #
@@ -77,13 +78,20 @@ function _aichat_ask_exec
     set -l cmd (printf '%s' "$output" | _aichat_extract_cmd | string collect)
 
     if test -n "$cmd"
-        # Always echo the raw model reply as a `# …` comment before executing.
-        # Running model-generated commands is risky; surfacing the original
-        # reasoning gives the user a last chance to spot something wrong.
-        set -l comment (printf '%s' "$output" | sed 's/^/# /' | tr '\n' ' ')
-        printf '%s\n' "$comment"
+        # Parse succeeded: echo the resolved command as `# …` comments before
+        # executing (multi-line aware). Running model-generated commands is risky;
+        # this gives the user a last chance to spot something wrong.
+        # When stdout is a tty, color the comment lines like a real shell comment.
+        if isatty stdout
+            set_color brblack
+            printf '%s\n' "$cmd" | sed 's/^/# /'
+            set_color normal
+        else
+            printf '%s\n' "$cmd" | sed 's/^/# /'
+        end
         eval $cmd
     else
+        # Parse failed: dump the full model reply between markers.
         echo "###############################################"
         printf '%s\n' "$output"
         echo "###############################################"
