@@ -51,38 +51,48 @@ impl Config {
 
     /// Get default config content with comments (JSONC format)
     pub fn default_config_with_comments() -> String {
-        r#"{
-  "providers": {
+        format!(
+            r#"{{
+  "providers": {{
   // Example provider configuration (uncomment and modify to use)
    /*
-    "openai": {
+    "openai": {{
       "name": "OpenAI",
       "baseURL": "https://api.openai.com/v1",
       "apiKey": "sk-...",  // Replace with your API key
-      "models": {
-        "gpt-5.4-codex": {  // model key used in request body: { "model": "<this_key>" }
+      "models": {{
+        "gpt-5.4-codex": {{  // model key used in request body: {{ "model": "<this_key>" }}
           "name": "my-fav-codex-5.4", // display name for you (optional)
           "temperature": 0.7
-        },
-        "gpt-5-mini": {},
-      }
-    }*/
-  },
+        }},
+        "gpt-5-mini": {{}},
+      }}
+    }}*/
+  }},
   "default-model": null, // key of model, with provider prefix optionally. e.g. "gpt-5.4-codex", "openai/gpt-5-mini"
-  "prompts": {
-    "sample_prompt": {
+  "prompts": {{
+    "sample_prompt": {{
       "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"
-    },
-    "concise": {
+    }},
+    "concise": {{
       "content": "Use plain text, give extremely concise output"
-    }
-  },
+    }},
+    // Used by `?` / `?!` shell integration (see `aichat --init-integration`).
+    // The wrapper expects either `{{\"command\":\"...\"}}` JSON or plain text.
+    // Edit freely — your changes take effect immediately.
+    "{integration_prompt_name}": {{
+      "content": {integration_prompt_json}
+    }}
+  }},
   "default-prompt": "sample_prompt",
   "disable-stream": false,
   "pure": false,
   "verbose": false
-}
-"#.to_string()
+}}
+"#,
+            integration_prompt_name = crate::integrations::DEFAULT_INTEGRATION_PROMPT_NAME,
+            integration_prompt_json = serde_json::to_string(crate::integrations::SHELL_INTEGRATION_PROMPT).unwrap(),
+        )
     }
 }
 

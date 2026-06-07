@@ -6,6 +6,7 @@ mod config;
 mod cli;
 mod chat;
 mod utils;
+mod integrations;
 
 fn main()->Result<(),Box<dyn std::error::Error>>{
     init_logger();

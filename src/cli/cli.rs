@@ -5,6 +5,7 @@ use crate::cli::interactive::interactive_input;
 use crate::cli::structs::Cli;
 
 use crate::config::{Config, ConfigManager, print_providers, print_prompts, print_config_location, ProviderConfig, ModelConfig};
+use crate::integrations;
 use crate::utils::StringUtilsTrait;
 use crate::utils::logger::set_log_level;
 use crate::{chat, log_debug, utils};
@@ -37,6 +38,16 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config_manager = ConfigManager::new(&config_dir, custom_config_path.as_deref())?;
     let config_path = config_manager.get_config_path().to_path_buf();
+
+    // Fast path: `--init-integration <SHELL>` — write the prompt to the
+    // user's config (transparent, editable) and emit the shell script.
+    if let Some(shell) = integrations::init::parse_init_integration_arg(&orig_args) {
+        let prompt_name = integrations::init::parse_prompt_arg(&orig_args)
+            .unwrap_or_else(|| integrations::DEFAULT_INTEGRATION_PROMPT_NAME.to_string());
+        integrations::init::ensure_integration_prompt(&config_manager, &prompt_name)?;
+        print!("{}", integrations::render_script(shell, &prompt_name));
+        return Ok(());
+    }
 
     // Check for no-args case first (orig_args includes program name)
     if orig_args.len() == 1 {
