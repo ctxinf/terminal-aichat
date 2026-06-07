@@ -5,7 +5,7 @@
 
 
 <div align="center"><img src="./aichat.webp" alt="terminal-aichat" height="140" /></div>
-
+<div align="center"><img src="./aichat-terminal-integration.webp" alt="terminal-aichat-shell-integration"  height="210" /></div>
 
 终端内AI/LLM聊天的CLI
 - 使用Rust编写，轻量级（6.5MB二进制大小），超级快。
@@ -82,6 +82,28 @@ cat input.txt | aichat "explain this"
 # 纯净模式（不显示模型/提示配置和成本信息）
 aichat --pure "Hello?"
 ```
+
+### Shell 集成 (`?` / `?!`)
+
+一行装好，给你的 shell 加两个命令：
+
+```sh
+# zsh
+eval "$(aichat --init-integration zsh)"
+# bash
+eval "$(aichat --init-integration bash)"
+# fish
+aichat --init-integration fish | source
+```
+
+| 命令 | 行为 |
+| --- | --- |
+| `? <问题>` | 问 AI；如果回的是可执行命令，**预填到当前命令行**（你按 Enter 执行），否则用 `###` 包裹原样打印。 |
+| `?! <问题>` | 同上，但**自动执行**解析出的命令。每行先以 `# …`（暗色）显示，让你看清要跑什么。 |
+| `cmd \| ? "..."` | 通过管道把 stdin 作为额外上下文。 |
+| `? --debug ...` | 额外把模型原始回复作为注释显示（仅 `?`）。 |
+
+集成用的提示词会写入配置 `prompts.shell-exec-or-chat`——**可读、可改、可换**（用 `--prompt <name>` 切换）。bash/fish 标准名是 `q` / `qe`（`?` / `?!` 是尽力别名）。
 
 ## 配置
 

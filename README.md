@@ -4,6 +4,7 @@
 
 
 <div align="center"><img src="./aichat.webp" alt="terminal-aichat" height="140" /></div>
+<div align="center"><img src="./aichat-terminal-integration.webp" alt="terminal-aichat-shell-integration"  height="210" /></div>
 
 [README中文](./README_zh.md)
 
@@ -89,6 +90,28 @@ cat input.txt | aichat "explain this"
 # pure mode (display for model/prompts configs and costs will be hide)
 aichat --pure "Hello?"
 ```
+
+### Shell Integration (`?` / `?!`)
+
+One-line install adds two commands to your shell:
+
+```sh
+# zsh
+eval "$(aichat --init-integration zsh)"
+# bash
+eval "$(aichat --init-integration bash)"
+# fish
+aichat --init-integration fish | source
+```
+
+| Command | Behavior |
+| --- | --- |
+| `? <message>` | Ask AI; if reply is a runnable command, **pre-fill it in the buffer** (you press Enter). Otherwise dump the reply between `###` markers. |
+| `?! <message>` | Same, but **auto-execute** the parsed command. Each line is echoed as `# …` (dimmed) first, so you see what's running. |
+| `cmd \| ? "..."` | Pipe stdin in as extra context. |
+| `? --debug ...` | Also prepend the raw model reply as a comment (`?` only). |
+
+The integration prompt is written to your config as `prompts.shell-exec-or-chat` — **read it, edit it, swap it out** with `--prompt <name>`. Bash/fish use `q` / `qe` as the canonical names (the `?` / `?!` aliases are best-effort).
 
 ## Configuration
 
