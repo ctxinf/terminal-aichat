@@ -15,10 +15,18 @@ pub async fn completion(
     prompt_name: &str,
     prompt: &PromptConfig,
     config: &Config,
+    integration_shell: Option<crate::cli::structs::IntegrationShell>,
 ) -> Result<Value> {
     // Prepare all fallible config before starting the renderer.
     let headers = create_headers(provider, model, config).await?;
-    let messages = crate::prompt::render(prompt, input).await?;
+    let mut messages = crate::prompt::render(prompt, input).await?;
+    if let Some(shell) = integration_shell {
+        let system = messages[0]["content"].as_str().unwrap_or_default();
+        messages[0]["content"] = json!(format!(
+            "{system}\nCurrent shell: {shell:?}. Operating system: {}. Generate commands for this shell and OS.",
+            std::env::consts::OS
+        ));
+    }
     crate::log_trace!("Rendered prompt messages: {messages}");
     let body = create_request(messages, provider, model, config);
     let disable_stream = !body.get("stream").and_then(Value::as_bool).unwrap_or(false);
@@ -76,10 +84,19 @@ pub async fn completion(
             let mut events = response.bytes_stream().eventsource();
             let mut done = false;
             while let Some(event) = events.next().await {
+                // Consume the HTTP body through EOF even after the SSE sentinel.
+                // Dropping it at [DONE] can reset an otherwise successful proxy connection.
+                if done {
+                    if let Err(error) = event {
+                        crate::log_debug!("Chat stream transport ended after [DONE]: {error}");
+                        break;
+                    }
+                    continue;
+                }
                 let event = event.map_err(|_| "chat stream failed")?;
                 if event.data == "[DONE]" {
                     done = true;
-                    break;
+                    continue;
                 }
                 let response: Value = serde_json::from_str(&event.data).map_err(|_| "invalid chat stream JSON")?;
                 check_response(&response)?;
@@ -243,6 +260,78 @@ mod tests {
         }))
         .unwrap()
     }
+    #[tokio::test]
+    async fn streaming_drains_http_body_after_done() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let n = socket.read(&mut buffer).await.unwrap();
+                assert!(n > 0);
+                request.extend_from_slice(&buffer[..n]);
+                if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]).to_ascii_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:").map(str::trim))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")
+                .await
+                .unwrap();
+            let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n";
+            socket
+                .write_all(format!("{:x}\r\n{payload}\r\n", payload.len()).as_bytes())
+                .await
+                .unwrap();
+            // The proxy sends the final HTTP chunk after the SSE sentinel.
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let payload = "data: ignored trailer\n\n";
+            let sent = std::time::Instant::now();
+            socket
+                .write_all(format!("{:x}\r\n{payload}\r\n0\r\n\r\n", payload.len()).as_bytes())
+                .await
+                .unwrap();
+            sent
+        });
+        let mut cfg = config();
+        cfg.pure = true;
+        let provider = cfg.providers.get_mut("gateway").unwrap();
+        provider.base_url = format!("http://{address}/v1");
+        provider.api_key = None;
+        provider.max_retries = 0;
+        provider.timeout_ms = 2000;
+        provider.models[0].stream = true;
+        let provider = &cfg.providers["gateway"];
+        completion(
+            "hello",
+            provider,
+            &provider.models[0],
+            "test",
+            &PromptConfig::default(),
+            &cfg,
+            None,
+        )
+        .await
+        .unwrap();
+        let finished = std::time::Instant::now();
+        assert!(
+            finished >= server.await.unwrap(),
+            "completion returned before the final HTTP chunk"
+        );
+    }
+
     #[test]
     fn compact_usage_units_and_cache_threshold() {
         for (tokens, expected) in [
@@ -453,7 +542,9 @@ mod tests {
                     let body: Value = serde_json::from_slice(&request[header_end..header_end + length]).unwrap();
                     assert_eq!(body["model"], "vendor/model");
                     assert_eq!(body["stream"], streaming);
-                    assert_eq!(body["messages"][0]["content"], "system");
+                    let system = body["messages"][0]["content"].as_str().unwrap();
+                    assert!(system.starts_with("system\nCurrent shell: Fish."));
+                    assert!(system.contains(std::env::consts::OS));
                     assert_eq!(body["messages"][1]["content"], "Question: hello");
                     let (status, content_type, payload) = if attempt == 0 {
                         ("503 Service Unavailable", "application/json", "{}")
@@ -494,7 +585,15 @@ mod tests {
             };
             tokio::time::timeout(
                 Duration::from_secs(5),
-                completion("hello", provider, &provider.models[0], "test", &prompt, &cfg),
+                completion(
+                    "hello",
+                    provider,
+                    &provider.models[0],
+                    "test",
+                    &prompt,
+                    &cfg,
+                    Some(crate::cli::structs::IntegrationShell::Fish),
+                ),
             )
             .await
             .unwrap()

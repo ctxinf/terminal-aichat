@@ -57,6 +57,10 @@ pub struct Cli {
     #[arg(long)]
     pub log_level: Option<String>,
 
+    /// Shell context supplied by generated integration scripts
+    #[arg(long, hide = true, value_enum)]
+    pub integration_shell: Option<IntegrationShell>,
+
     /// Chat input content
     #[arg(trailing_var_arg = true)]
     pub input: Vec<String>,

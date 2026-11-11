@@ -103,7 +103,7 @@ eval "$(aichat --init-integration bash)"
 aichat --init-integration fish | source
 ```
 
-The integration provides `?` and `?!` commands. Inspect generated shell commands before executing them. Avoid debug/trace logging when consuming the answer as machine-readable text.
+The integration provides `?` and `?!` commands. Inspect generated shell commands before executing them. Diagnostics go to stderr, including DEBUG/TRACE, so stdout contains only the answer in pure mode. Generated scripts pin the selected config path and prompt, enforce pure non-streaming replies, and supply shell/OS context. They require jq or python3 to extract command JSON; without either, replies are displayed without execution. Plain chat shows a cyan aichat label only on terminals; redirected output contains only the reply. Regenerate the script after upgrading.
 
 Model reasoning=false explicitly disables thinking: OpenRouter uses reasoning.enabled=false; DeepSeek endpoints/models use thinking.type=disabled without reasoning_effort; other OpenAI-compatible endpoints use reasoning_effort=none. API support varies; extraBody and removeBodyFields retain final precedence for custom endpoints or models that reject these fields. Display.reasoning controls only rendering. Terminal answers end with a newline; redirected/piped answers preserve exact bytes.
 

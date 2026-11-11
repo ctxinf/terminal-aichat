@@ -4,7 +4,7 @@
 #   q  <message>    ask AI; if reply is a command, pre-fill an editable prompt
 #   qe <message>    ask AI; if a command is parsed, echo it as `# …`
 #                   comments then execute it; if parsing fails, dump the
-#                   full reply between `###` markers (no execution)
+#                   reply as chat text (no execution)
 #   command | q     pipe stdin as additional context
 #   q --debug ...   prepend the raw model reply as a comment line (`q` only)
 #
@@ -20,16 +20,34 @@
 
 _aichat_extract_cmd() {
   if command -v jq >/dev/null 2>&1; then
-    jq -r '.command? // empty' 2>/dev/null
+    jq -ers 'if length == 1 and (.[0] | type == "object") then .[0].command | select(type == "string") | select(test("[^[:space:]]") and (explode | index(0) == null)) else empty end' 2>/dev/null
   elif command -v python3 >/dev/null 2>&1; then
-    python3 -c $'import sys,json\ntry:\n  d=json.load(sys.stdin); v=d.get("command");\n  print(v if isinstance(v,str) else "")\nexcept Exception: pass' 2>/dev/null
+    python3 -c 'import sys,json
+try:
+  d=json.load(sys.stdin)
+  v=d.get("command") if isinstance(d,dict) else None
+  if not isinstance(v,str) or not v.strip() or chr(0) in v: sys.exit(1)
+  sys.stdout.write(v)
+except Exception: sys.exit(1)' 2>/dev/null
   else
-    sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1
+    printf '%s\n' 'aichat: install jq or python3 to enable command replies.' >&2
+    return 1
   fi
 }
 
 _aichat_run() {
-  command aichat --prompt {{PROMPT_NAME}} --pure --disable-stream "$@"
+  env -u TERMINAL_AICHT_INIT_INTEGRATION \
+    TERMINAL_AICHT_PROMPT={{PROMPT_NAME}} \
+    TERMINAL_AICHT_CONFIG={{CONFIG_PATH}} \
+    TERMINAL_AICHT_PURE=true TERMINAL_AICHT_DISABLE_STREAM=true \
+    aichat --integration-shell {{SHELL_NAME}} -- "$@"
+}
+
+_aichat_show_chat() {
+  if [ -t 1 ]; then
+    printf '\033[36maichat\033[0m\n'
+  fi
+  printf '%s\n' "$1"
 }
 
 _aichat_ask() {
@@ -45,10 +63,14 @@ _aichat_ask() {
   fi
 
   local output cmd
-  output=$(_aichat_run "${args[@]}")
+  output=$(_aichat_run "${args[@]}") || return $?
   cmd=$(printf '%s' "$output" | _aichat_extract_cmd)
 
   if [ -n "$cmd" ]; then
+    if [ ! -t 1 ]; then
+      printf '%s\n' "$cmd"
+      return 0
+    fi
     if [ "$debug" = 1 ]; then
       local comment
       comment=$(printf '%s' "$output" | sed 's/^/# /' | tr '\n' ' ')
@@ -57,16 +79,14 @@ _aichat_ask() {
     # bash has no `print -z`; use `read -e -i` to put the command in
     # an editable prompt. User edits then presses Enter to run, or Ctrl+C to abort.
     local edited
-    if IFS= read -e -i "$cmd" -r -p '' edited; then
+    if IFS= read -e -i "$cmd" -r -p '' edited < /dev/tty; then
       if [ -n "$edited" ]; then
         history -s -- "$edited"
         eval "$edited"
       fi
     fi
   else
-    printf '###############################################\n'
-    printf '%s\n' "$output"
-    printf '###############################################\n'
+    _aichat_show_chat "$output"
   fi
 }
 
@@ -77,7 +97,7 @@ _aichat_ask_exec() {
   fi
 
   local output cmd
-  output=$(_aichat_run "$@")
+  output=$(_aichat_run "$@") || return $?
   cmd=$(printf '%s' "$output" | _aichat_extract_cmd)
 
   if [ -n "$cmd" ]; then
@@ -95,10 +115,8 @@ _aichat_ask_exec() {
     history -s -- "$cmd"
     eval "$cmd"
   else
-    # Parse failed: dump the full model reply between markers.
-    printf '###############################################\n'
-    printf '%s\n' "$output"
-    printf '###############################################\n'
+    # Plain text or an invalid command reply is displayed without execution.
+    _aichat_show_chat "$output"
   fi
 }
 

@@ -166,6 +166,7 @@ fn debug_log_reports_prompt_command_failure() {
             String::from_utf8_lossy(&result.stderr)
         );
         assert!(text.contains("prompt command failed"), "{text}");
+        assert!(result.stdout.is_empty(), "diagnostics must stay on stderr");
         if level == "INFO" {
             assert!(!text.contains("diagnostic-output"), "{text}");
         } else {

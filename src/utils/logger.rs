@@ -76,14 +76,7 @@ pub fn log_impl(level: LogLevel, args: fmt::Arguments) {
         args
     );
 
-    match level {
-        LogLevel::Error | LogLevel::Warn => {
-            let _ = writeln!(io::stderr(), "{}", msg);
-        }
-        _ => {
-            println!("{}", msg);
-        }
-    }
+    let _ = writeln!(io::stderr(), "{}", msg);
 }
 
 #[macro_export]

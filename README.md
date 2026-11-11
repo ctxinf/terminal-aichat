@@ -106,12 +106,14 @@ aichat --init-integration fish | source
 
 | Command | Behavior |
 | --- | --- |
-| `? <message>` | Ask AI; if reply is a runnable command, **pre-fill it in the buffer** (you press Enter). Otherwise dump the reply between `###` markers. |
+| `? <message>` | Ask AI; if reply is a runnable command, **pre-fill it in the buffer** (you press Enter). Otherwise display the reply with a cyan `aichat` label in terminals. |
 | `?! <message>` | Same, but **auto-execute** the parsed command. Each line is echoed as `# …` (dimmed) first, so you see what's running. |
 | `cmd \| ? "..."` | Pipe stdin in as extra context. |
 | `? --debug ...` | Also prepend the raw model reply as a comment (`?` only). |
 
 The integration prompt is written to your config as `prompts.shell-exec-or-chat` — **read it, edit it, swap it out** with `--prompt <name>`. Bash/fish use `q` / `qe` as the canonical names (the `?` / `?!` aliases are best-effort).
+
+The generated script preserves the selected `--config` path and `--prompt`, supplies shell/OS context, and keeps replies pure and non-streaming. Logs go to stderr. Command extraction requires `jq` or `python3`; without either, replies are displayed without execution. Redirected chat output contains only the reply. Regenerate the integration after upgrading.
 
 ## Configuration
 

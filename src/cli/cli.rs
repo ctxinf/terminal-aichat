@@ -55,7 +55,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_deref()
             .unwrap_or(integrations::DEFAULT_INTEGRATION_PROMPT_NAME);
         integrations::init::ensure_integration_prompt(&config_manager, prompt_name)?;
-        print!("{}", integrations::render_script(shell, prompt_name));
+        print!("{}", integrations::render_script(shell, prompt_name, &config_path)?);
         return Ok(());
     }
     if std::env::args_os().len() == 1 && io::stdin().is_terminal() {
@@ -218,7 +218,7 @@ async fn handle_chat_command(
         &input.safe_substring(20)
     );
 
-    let usage = chat::completion(&input, provider, model, prompt_name, prompt_config, runtime_config).await?;
+    let usage = chat::completion(&input, provider, model, prompt_name, prompt_config, runtime_config, cli.integration_shell).await?;
 
     log_debug!("Chat Done.");
     Ok(usage)

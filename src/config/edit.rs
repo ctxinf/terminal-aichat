@@ -129,6 +129,30 @@ pub(super) fn replace_api_key(source: &str, provider: &str, value: &super::ApiKe
     Ok(output)
 }
 
+/// Add a prompt without confusing strings/comments with property names.
+pub(crate) fn insert_prompt(source: &str, name: &str, prompt: &super::PromptConfig) -> Result<String, String> {
+    let tokens = tokens(source)?;
+    let key = serde_json::to_string(name).map_err(|e| e.to_string())?;
+    let value = serde_json::to_string(prompt).map_err(|e| e.to_string())?;
+    let (target, entry) = match member(source, &tokens, 0, "prompts")? {
+        Some(target) => {
+            if member(source, &tokens, target, name)?.is_some() {
+                return Ok(source.to_owned());
+            }
+            (target, format!("{key}: {value}"))
+        }
+        None => (0, format!("\"prompts\": {{{key}: {value}}}")),
+    };
+    let comma = if tokens.get(target + 1).is_some_and(|t| t.kind != b'}') {
+        ","
+    } else {
+        ""
+    };
+    let mut output = source.to_owned();
+    output.insert_str(tokens[target].range.end, &format!("\n    {entry}{comma}\n"));
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

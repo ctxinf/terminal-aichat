@@ -4,7 +4,7 @@
 #   q  <message>    ask AI; if reply is a command, put it into the buffer
 #   qe <message>    ask AI; if a command is parsed, echo it as `# …`
 #                   comments then execute it; if parsing fails, dump the
-#                   full reply between `###` markers (no execution)
+#                   reply as chat text (no execution)
 #   command | q     pipe stdin as additional context
 #   q --debug ...   prepend the raw model reply as a comment line (`q` only)
 #
@@ -19,20 +19,41 @@
 
 function _aichat_extract_cmd
     if command -q jq
-        jq -r '.command? // empty' 2>/dev/null
+        jq -ers 'if length == 1 and (.[0] | type == "object") then .[0].command | select(type == "string") | select(test("[^[:space:]]") and (explode | index(0) == null)) else empty end' 2>/dev/null
     else if command -q python3
         python3 -c 'import sys,json
 try:
-  d=json.load(sys.stdin); v=d.get("command")
-  print(v if isinstance(v,str) else "")
-except Exception: pass' 2>/dev/null
+  d=json.load(sys.stdin)
+  v=d.get("command") if isinstance(d,dict) else None
+  if not isinstance(v,str) or not v.strip() or chr(0) in v: sys.exit(1)
+  sys.stdout.write(v)
+except Exception: sys.exit(1)' 2>/dev/null
     else
-        sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1
+        printf '%s\n' 'aichat: install jq or python3 to enable command replies.' >&2
+        return 1
     end
 end
 
 function _aichat_run
-    command aichat --prompt {{PROMPT_NAME}} --pure --disable-stream $argv
+    env -u TERMINAL_AICHT_INIT_INTEGRATION \
+        TERMINAL_AICHT_PROMPT={{PROMPT_NAME}} \
+        TERMINAL_AICHT_CONFIG={{CONFIG_PATH}} \
+        TERMINAL_AICHT_PURE=true TERMINAL_AICHT_DISABLE_STREAM=true \
+        aichat --integration-shell {{SHELL_NAME}} -- $argv
+end
+
+function _aichat_capture
+    _aichat_run $argv | string collect
+    return $pipestatus[1]
+end
+
+function _aichat_show_chat
+    if isatty stdout
+        set_color cyan
+        printf 'aichat\n'
+        set_color normal
+    end
+    printf '%s\n' "$argv[1]"
 end
 
 function _aichat_ask
@@ -50,10 +71,15 @@ function _aichat_ask
         return 1
     end
 
-    set -l output (_aichat_run $args | string collect)
+    set -l output (_aichat_capture $args)
+    or return $status
     set -l cmd (printf '%s' "$output" | _aichat_extract_cmd | string collect)
 
     if test -n "$cmd"
+        if not isatty stdout
+            printf '%s\n' "$cmd"
+            return 0
+        end
         if test $debug -eq 1
             set -l comment (printf '%s' "$output" | sed 's/^/# /' | tr '\n' ' ')
             commandline -r "$comment
@@ -62,9 +88,7 @@ $cmd"
             commandline -r -- "$cmd"
         end
     else
-        echo "###############################################"
-        printf '%s\n' "$output"
-        echo "###############################################"
+        _aichat_show_chat "$output"
     end
 end
 
@@ -74,7 +98,8 @@ function _aichat_ask_exec
         return 1
     end
 
-    set -l output (_aichat_run $argv | string collect)
+    set -l output (_aichat_capture $argv)
+    or return $status
     set -l cmd (printf '%s' "$output" | _aichat_extract_cmd | string collect)
 
     if test -n "$cmd"
@@ -91,10 +116,8 @@ function _aichat_ask_exec
         end
         eval $cmd
     else
-        # Parse failed: dump the full model reply between markers.
-        echo "###############################################"
-        printf '%s\n' "$output"
-        echo "###############################################"
+        # Plain text or an invalid command reply is displayed without execution.
+        _aichat_show_chat "$output"
     end
 end
 

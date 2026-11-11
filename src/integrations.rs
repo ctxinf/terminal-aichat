@@ -50,6 +50,38 @@ fn template_for(shell: IntegrationShell) -> &'static str {
 
 /// Render a shell integration script with the user-chosen prompt name
 /// substituted in. The templates contain the placeholder `{{PROMPT_NAME}}`.
-pub fn render_script(shell: IntegrationShell, prompt_name: &str) -> String {
-    template_for(shell).replace("{{PROMPT_NAME}}", prompt_name)
+pub fn render_script(
+    shell: IntegrationShell,
+    prompt_name: &str,
+    config_path: &std::path::Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let path = std::path::absolute(config_path)?;
+    let path = path.to_str().ok_or("config path is not Unicode")?;
+    let quote = |value: &str| match shell {
+        IntegrationShell::Fish => format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'")),
+        _ => format!("'{}'", value.replace('\'', "'\\''")),
+    };
+    let shell_name = match shell {
+        IntegrationShell::Bash => "bash",
+        IntegrationShell::Zsh => "zsh",
+        IntegrationShell::Fish => "fish",
+    };
+    let values = [
+        ("{{PROMPT_NAME}}", quote(prompt_name)),
+        ("{{CONFIG_PATH}}", quote(path)),
+        ("{{SHELL_NAME}}", shell_name.to_owned()),
+    ];
+    let mut rest = template_for(shell);
+    let mut output = String::new();
+    while let Some((offset, (key, value))) = values
+        .iter()
+        .filter_map(|pair| rest.find(pair.0).map(|offset| (offset, pair)))
+        .min_by_key(|(offset, _)| *offset)
+    {
+        output.push_str(&rest[..offset]);
+        output.push_str(value);
+        rest = &rest[offset + key.len()..];
+    }
+    output.push_str(rest);
+    Ok(output)
 }
