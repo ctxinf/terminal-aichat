@@ -5,7 +5,7 @@
 ## Invocation
 
 - `aichat "question"`: chat with the default model and prompt.
-- `aichat --model provider/model-id --prompt concise "question"`: select a model and prompt.
+- `aichat --model model-id --prompt concise "question"`: select a model and prompt.
 - `printf 'context' | aichat "question"`: append stdin to the message.
 - `aichat --pure --disable-stream "question"`: answer text only, no streaming.
 - `aichat config show`: list configured models, prompts and config path.
@@ -44,7 +44,7 @@ The default file is generated on first use. JSONC allows comments.
 }
 ```
 
-A model selector can be an ID, display name, or `provider/model-id`. `defaultProvider` scopes bare selectors; ambiguous matches fail.
+Select models by ID (including any slashes in the ID) or display name. The defaultProvider has priority, then the first matching provider/model in configuration order.
 Provider options: `name`, `api` (`openai-completions`), `headers`, `queryParams`, `timeoutMs` (120000), `maxRetries` (2), `extraBody`.
 Model options: `id`, `name`, `stream` (true), `reasoning` (true), `thinkingLevel`, `headers`, `extraBody`, `removeBodyFields`.
 Model headers and extra body override provider values; removeBodyFields removes top-level request fields last.
@@ -89,7 +89,7 @@ Environment variables override explicit CLI values, which override config values
 
 Boolean variables accept true/false or 1/0, case insensitive; CLI booleans also support `--pure=false`. Empty values fail except DISPLAY, where empty clears all options. Logging accepts ERROR, WARN, INFO, DEBUG, TRACE. Bare LOG_LEVEL is ignored. The program inherits process variables and never loads environment files.
 
-Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Model and prompt share a line with colored labels on terminals. Duration and usage share a footer, e.g. 1.20s  ↑ 350 tokens(200 cached) ↓ 356 tokens. Token counts use k/m units from 1000/1000000; cached tokens below 1000 show a count, otherwise a percentage of input. Unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
+Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Model and prompt share a line with a green > marker, green labels and blue names on terminals. Duration and usage share a footer, e.g. 1200ms  ↑ 350 tokens(200 cached) ↓ 356 tokens. Token counts use k/m units from 1000/1000000; cached tokens below 1000 show a count, otherwise a percentage of input. Unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
 
 ## Shell integration
 
@@ -110,3 +110,5 @@ Model reasoning=false explicitly disables thinking: OpenRouter uses reasoning.en
 Streaming is configured per model with `"stream": true|false` (default true). The top-level disableStream field has been removed. `--disable-stream` or TERMINAL_AICHT_DISABLE_STREAM=true disables streaming for this invocation; `--disable-stream=false` or the environment value false enables streaming even for a model with stream=false. Environment overrides CLI. extraBody and removeBodyFields still apply last to the outgoing request.
 
 DEBUG logs prompt template fields, commands and failures, including captured output and exit status. TRACE also logs rendered messages and successful command stdout.
+
+Provider and model accept `maxTokens` (positive integer). Requests send `max_tokens`: model maxTokens overrides provider maxTokens, otherwise 2048. extraBody overrides this value and removeBodyFields applies last. This limits the output budget used for OpenRouter credit checks. Increase the budget for longer replies. Generated OpenRouter configs include HTTP-Referer and X-OpenRouter-Title for application attribution. Existing configs are not rewritten.

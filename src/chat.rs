@@ -61,7 +61,11 @@ pub async fn completion(
     let renderer = ResponseRenderer::new();
     let (tx, task) = renderer.start_render(RenderConfig {
         pure: config.pure,
-        model_name: model.get_name(),
+        model_name: model
+            .name
+            .as_ref()
+            .map(|name| format!("{name}({})", model.id))
+            .unwrap_or_else(|| model.id.clone()),
         prompt_config_name: prompt_name.into(),
         display: config.display.clone(),
     });
@@ -213,7 +217,7 @@ fn completion_url(provider: &ProviderConfig) -> Result<reqwest::Url> {
 
 fn create_request(messages: Value, provider: &ProviderConfig, model: &ModelConfig, config: &Config) -> Value {
     let mut body = json!({ "model": model.id, "stream": model.stream,
-        "messages": messages });
+        "messages": messages, "max_tokens": model.max_tokens.or(provider.max_tokens).unwrap_or(2048) });
     if model.reasoning {
         body["reasoning_effort"] = json!(model.thinking_level.as_ref().unwrap_or(&config.default_thinking_level));
     } else {
@@ -329,6 +333,45 @@ mod tests {
         assert!(
             finished >= server.await.unwrap(),
             "completion returned before the final HTTP chunk"
+        );
+    }
+
+    #[test]
+    fn max_tokens_inheritance_and_overrides() {
+        let mut cfg: Config = serde_json::from_value(json!({"providers":{"test":{
+            "baseUrl":"http://localhost/v1", "models":[{"id":"test"}]
+        }}}))
+        .unwrap();
+        let provider = cfg.providers.get_mut("test").unwrap();
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())["max_tokens"],
+            2048
+        );
+        provider.max_tokens = Some(4096);
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())["max_tokens"],
+            4096
+        );
+        provider.models[0].max_tokens = Some(1024);
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())["max_tokens"],
+            1024
+        );
+        provider.extra_body.insert("max_tokens".into(), json!(512));
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())["max_tokens"],
+            512
+        );
+        provider.models[0].extra_body.insert("max_tokens".into(), json!(256));
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())["max_tokens"],
+            256
+        );
+        provider.models[0].remove_body_fields.push("max_tokens".into());
+        assert!(
+            create_request(json!([]), provider, &provider.models[0], &Config::default())
+                .get("max_tokens")
+                .is_none()
         );
     }
 

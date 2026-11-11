@@ -96,19 +96,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         ConfigCommand::Model { .. } => {
-            let mut models: Vec<_> = config
+            let models: Vec<_> = config
                 .providers
                 .iter()
                 .flat_map(|(id, provider)| {
                     provider
                         .models
                         .iter()
-                        .map(move |model| (format!("{id}/{}", model.id), model.get_name()))
+                        .map(move |model| (model.id.clone(), model.get_name(), id))
                 })
                 .collect();
-            models.sort();
-            for (selector, name) in models {
-                println!("{selector} ({name})");
+            for (selector, name, provider) in models {
+                println!("{selector} ({name}) [{provider}]");
             }
         }
         ConfigCommand::Login { provider } => {

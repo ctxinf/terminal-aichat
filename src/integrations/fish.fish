@@ -121,6 +121,14 @@ function _aichat_ask_exec
     end
 end
 
+function q
+    _aichat_ask $argv
+end
+
+function qe
+    _aichat_ask_exec $argv
+end
+
 # Abbreviations expand on space/enter, so `? foo` becomes `q foo`.
 # `--position command` keeps the abbreviation from firing mid-line.
 abbr -a -g --position command -- '?' q 2>/dev/null

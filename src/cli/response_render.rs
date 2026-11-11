@@ -26,22 +26,37 @@ impl ResponseRenderer {
                 let mut fields = Vec::new();
                 if config.display.model {
                     let label = if terminal {
-                        "model:".dark_cyan().to_string()
+                        "model:".dark_green().bold().to_string()
                     } else {
                         "model:".into()
                     };
-                    fields.push(format!("{label} {}", config.model_name));
+                    let name = if terminal {
+                        config.model_name.dark_blue().bold().to_string()
+                    } else {
+                        config.model_name
+                    };
+                    fields.push(format!("{label} {name}"));
                 }
                 if config.display.prompt {
                     let label = if terminal {
-                        "prompt:".dark_cyan().to_string()
+                        "prompt:".dark_green().bold().to_string()
                     } else {
                         "prompt:".into()
                     };
-                    fields.push(format!("{label} {}", config.prompt_config_name));
+                    let name = if terminal {
+                        config.prompt_config_name.dark_blue().bold().to_string()
+                    } else {
+                        config.prompt_config_name
+                    };
+                    fields.push(format!("{label} {name}"));
                 }
                 if !fields.is_empty() {
-                    println!("{}", fields.join("   "));
+                    let marker = if terminal {
+                        " > ".black().on_green().to_string()
+                    } else {
+                        ">".into()
+                    };
+                    println!("{marker}  {}\n", fields.join("    "));
                 }
             }
             let mut reasoning = false;

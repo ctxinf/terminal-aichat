@@ -44,10 +44,12 @@ pub fn print_providers(config: &Config) -> io::Result<()> {
         // 打印 models
         println!("  Models:");
         for model in &provider.models {
-            let selector = format!("{}/{}", provider_key, model.id);
-            let is_default_model = config.default_model.as_deref() == Some(&selector)
-                || (config.default_model.as_deref() == Some(&model.id)
-                    && config.default_provider.as_deref().is_none_or(|p| p == provider_key));
+            let selector = model.id.clone();
+            let is_default_model = config
+                .default_model
+                .as_deref()
+                .and_then(|id| crate::cli::cli::find_model_by_selector(config, id).ok())
+                .is_some_and(|(key, id)| key == *provider_key && id == model.id);
             println!(
                 "    - {} ({}){}",
                 model.get_name(),

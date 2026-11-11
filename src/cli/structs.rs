@@ -19,7 +19,7 @@ pub enum IntegrationShell {
     disable_version_flag = false
 )]
 pub struct Cli {
-    /// Specify model selector to use (model ID; optionally provider/model-id)
+    /// Specify model ID (prefer defaultProvider, then configuration order)
     #[arg(short, long)]
     pub model: Option<String>,
 
@@ -90,10 +90,7 @@ impl Cli {
                 *target = Some(v);
             }
         }
-        for (name, target) in [
-            ("PURE", &mut self.pure),
-            ("DISABLE_STREAM", &mut self.disable_stream),
-        ] {
+        for (name, target) in [("PURE", &mut self.pure), ("DISABLE_STREAM", &mut self.disable_stream)] {
             let key = format!("TERMINAL_AICHT_{name}");
             if let Some(v) = value(&key)? {
                 *target = Some(match v.to_ascii_lowercase().as_str() {

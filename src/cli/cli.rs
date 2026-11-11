@@ -14,23 +14,8 @@ use crossterm::style::Stylize;
 use utils::logger::{self};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ModelLookupError {
-    NotFound {
-        selector: String,
-    },
-    ProviderScopedNotFound {
-        selector: String,
-        provider_key: String,
-        model_id: String,
-    },
-    AmbiguousKey {
-        model_id: String,
-        providers: Vec<String>,
-    },
-    AmbiguousName {
-        model_name: String,
-        matches: Vec<String>,
-    },
+pub(crate) enum ModelLookupError {
+    NotFound { selector: String },
 }
 
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,9 +73,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !runtime_config.pure {
         let mut footer = Vec::new();
         if runtime_config.display.duration {
-            let duration = format!("{:.2}s", started.elapsed().as_secs_f64());
+            let duration = format!("{}ms", started.elapsed().as_secs_f64() * 1000.0);
             footer.push(if io::stdout().is_terminal() {
-                duration.dark_cyan().to_string()
+                duration.dark_green().to_string()
             } else {
                 duration
             });
@@ -154,36 +139,6 @@ async fn handle_chat_command(
                         "aichat config show".dark_green()
                     );
                 }
-                ModelLookupError::ProviderScopedNotFound {
-                    selector,
-                    provider_key,
-                    model_id,
-                } => {
-                    eprintln!(
-                        "❌ Model ID '{}' not found under provider '{}'. (selector: '{}')\nTip: If your model ID contains '/', use '<provider>/<model_id>' to disambiguate. Use {} to list models.",
-                        model_id,
-                        provider_key,
-                        selector,
-                        "aichat config show".dark_green()
-                    );
-                }
-                ModelLookupError::AmbiguousKey { model_id, providers } => {
-                    eprintln!(
-                        "❌ Model ID '{}' exists in multiple providers: {}.\nTip: Use '<provider>/{}' to select one. Use {} to list models.",
-                        model_id,
-                        providers.join(", "),
-                        model_id,
-                        "aichat config show".dark_green()
-                    );
-                }
-                ModelLookupError::AmbiguousName { model_name, matches } => {
-                    eprintln!(
-                        "❌ Model name '{}' matches multiple models: {}.\nTip: Use '<provider>/<model_id>' (from the list) to select one. Use {} to list models.",
-                        model_name,
-                        matches.join(", "),
-                        "aichat config show".dark_green()
-                    );
-                }
             }
             exit(1);
         }
@@ -218,66 +173,42 @@ async fn handle_chat_command(
         &input.safe_substring(20)
     );
 
-    let usage = chat::completion(&input, provider, model, prompt_name, prompt_config, runtime_config, cli.integration_shell).await?;
+    let usage = chat::completion(
+        &input,
+        provider,
+        model,
+        prompt_name,
+        prompt_config,
+        runtime_config,
+        cli.integration_shell,
+    )
+    .await?;
 
     log_debug!("Chat Done.");
     Ok(usage)
 }
 
-/// Explicit provider/id wins; otherwise defaultProvider scopes bare IDs/names.
-fn find_model_by_selector(config: &Config, selector: &str) -> Result<(String, String), ModelLookupError> {
-    if let Some((provider_key, id)) = selector.split_once('/')
-        && let Some(provider) = config.providers.get(provider_key)
-    {
-        return provider
+/// Prefer the default provider, then configured provider/model order.
+pub(crate) fn find_model_by_selector(config: &Config, selector: &str) -> Result<(String, String), ModelLookupError> {
+    let providers = config
+        .default_provider
+        .as_ref()
+        .and_then(|key| config.providers.get_key_value(key))
+        .into_iter()
+        .chain(
+            config
+                .providers
+                .iter()
+                .filter(|(key, _)| Some(*key) != config.default_provider.as_ref()),
+        );
+    for (key, provider) in providers {
+        if let Some(model) = provider
             .models
             .iter()
-            .find(|m| m.id == id)
-            .map(|m| (provider_key.into(), m.id.clone()))
-            .ok_or_else(|| ModelLookupError::ProviderScopedNotFound {
-                selector: selector.into(),
-                provider_key: provider_key.into(),
-                model_id: id.into(),
-            });
-    }
-    let providers: Vec<_> = config
-        .providers
-        .iter()
-        .filter(|(key, _)| config.default_provider.as_ref().is_none_or(|p| p == *key))
-        .collect();
-    for by_name in [false, true] {
-        let mut matches: Vec<_> = providers
-            .iter()
-            .flat_map(|(key, provider)| {
-                provider
-                    .models
-                    .iter()
-                    .filter(move |m| {
-                        if by_name {
-                            m.name.as_deref() == Some(selector)
-                        } else {
-                            m.id == selector
-                        }
-                    })
-                    .map(move |m| ((*key).clone(), m.id.clone()))
-            })
-            .collect();
-        matches.sort();
-        match matches.len() {
-            0 => {}
-            1 => return Ok(matches.remove(0)),
-            _ if by_name => {
-                return Err(ModelLookupError::AmbiguousName {
-                    model_name: selector.into(),
-                    matches: matches.into_iter().map(|(p, m)| format!("{p}/{m}")).collect(),
-                });
-            }
-            _ => {
-                return Err(ModelLookupError::AmbiguousKey {
-                    model_id: selector.into(),
-                    providers: matches.into_iter().map(|(p, _)| p).collect(),
-                });
-            }
+            .find(|m| m.id == selector)
+            .or_else(|| provider.models.iter().find(|m| m.name.as_deref() == Some(selector)))
+        {
+            return Ok((key.clone(), model.id.clone()));
         }
     }
     Err(ModelLookupError::NotFound {
@@ -361,16 +292,12 @@ mod tests {
     #[test]
     fn selectors_and_default_provider() {
         let mut cfg = config();
-        assert!(matches!(
-            find_model_by_selector(&cfg, "shared"),
-            Err(ModelLookupError::AmbiguousKey { .. })
-        ));
         assert_eq!(
-            find_model_by_selector(&cfg, "a/vendor/model").unwrap(),
-            ("a".into(), "vendor/model".into())
+            find_model_by_selector(&cfg, "shared").unwrap(),
+            ("a".into(), "shared".into())
         );
         assert_eq!(
-            find_model_by_selector(&cfg, "friendly").unwrap(),
+            find_model_by_selector(&cfg, "vendor/model").unwrap(),
             ("a".into(), "vendor/model".into())
         );
         cfg.default_provider = Some("b".into());
@@ -379,10 +306,17 @@ mod tests {
             ("b".into(), "shared".into())
         );
         assert_eq!(
-            find_model_by_selector(&cfg, "a/shared").unwrap(),
-            ("a".into(), "shared".into())
+            find_model_by_selector(&cfg, "friendly").unwrap(),
+            ("a".into(), "vendor/model".into())
         );
-        assert!(find_model_by_selector(&cfg, "friendly").is_err());
-        assert!(find_model_by_selector(&cfg, "a/missing").is_err());
+        assert!(find_model_by_selector(&cfg, "a/shared").is_err());
+        let ordered: Config = serde_json_lenient::from_str(
+            r#"{"providers":{
+            "z":{"baseUrl":"http://localhost","models":[{"id":"shared"}]},
+            "a":{"baseUrl":"http://localhost","models":[{"id":"shared"}]}
+        }}"#,
+        )
+        .unwrap();
+        assert_eq!(find_model_by_selector(&ordered, "shared").unwrap().0, "z");
     }
 }

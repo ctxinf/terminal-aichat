@@ -90,6 +90,33 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn fish_public_entry_points() {
+    if Command::new("fish").arg("--version").output().is_err() {
+        eprintln!("Skipping unavailable fish");
+        return;
+    }
+    let f = Fixture::new();
+    let script = f.script("fish");
+    for (action, reply, expected) in [
+        ("q hello", "plain reply", "plain reply\n"),
+        ("q hello", r#"{"command":"printf command-ok"}"#, "printf command-ok\n"),
+        (
+            "qe hello",
+            r#"{"command":"printf command-ok"}"#,
+            "# printf command-ok\ncommand-ok",
+        ),
+        ("echo context | q hello", "pipe reply", "pipe reply\n"),
+    ] {
+        let output = f.run("fish", &script, action, reply, false, false);
+        assert!(output.status.success(), "{:?}", output);
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    }
+    for action in ["q hello", "qe hello"] {
+        assert_eq!(f.run("fish", &script, action, "", true, false).status.code(), Some(7));
+    }
+}
+
+#[test]
 fn generated_scripts_preserve_protocol_and_handle_failures() {
     for shell in ["bash", "zsh", "fish"] {
         if Command::new(shell).arg("--version").output().is_err() {

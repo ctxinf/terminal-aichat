@@ -25,6 +25,7 @@ pub struct ModelConfig {
     #[serde(default = "yes")]
     pub reasoning: bool,
     pub thinking_level: Option<String>,
+    pub max_tokens: Option<u32>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
     #[serde(default)]
@@ -56,6 +57,7 @@ pub struct ProviderConfig {
     pub timeout_ms: u64,
     #[serde(default = "retries")]
     pub max_retries: u32,
+    pub max_tokens: Option<u32>,
     #[serde(default)]
     pub extra_body: Map<String, Value>,
     pub models: Vec<ModelConfig>,
@@ -119,7 +121,7 @@ impl DisplayConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Config {
-    pub providers: HashMap<String, ProviderConfig>,
+    pub providers: indexmap::IndexMap<String, ProviderConfig>,
     pub prompts: HashMap<String, PromptConfig>,
     pub default_provider: Option<String>,
     pub default_model: Option<String>,
@@ -133,7 +135,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            providers: HashMap::new(),
+            providers: indexmap::IndexMap::new(),
             prompts: HashMap::new(),
             default_provider: None,
             default_model: None,
@@ -174,8 +176,17 @@ impl Config {
                     return Err(format!("providers.{key}.apiKey: value must be nonempty"));
                 }
             }
+            if provider.max_tokens == Some(0) {
+                return Err(format!("providers.{key}.maxTokens must be positive"));
+            }
             let mut ids = std::collections::HashSet::new();
             for model in &provider.models {
+                if model.max_tokens == Some(0) {
+                    return Err(format!(
+                        "providers.{key}.models.{}.maxTokens must be positive",
+                        model.id
+                    ));
+                }
                 if model.id.is_empty() || !ids.insert(&model.id) {
                     return Err(format!("providers.{key}.models: empty or duplicate id"));
                 }
@@ -208,7 +219,10 @@ mod tests {
             .replace("*/", "");
         let example: Config = serde_json_lenient::from_str(&enabled).unwrap();
         example.validate().unwrap();
-        assert_eq!(example.providers["openrouter"].models[0].id, "deepseek-flash");
+        assert_eq!(
+            example.providers["openrouter"].models[0].id,
+            "~deepseek/deepseek-flash-latest"
+        );
         let model: ModelConfig = serde_json::from_str(r#"{"id":"test"}"#).unwrap();
         assert!(model.reasoning);
         assert!(model.stream);

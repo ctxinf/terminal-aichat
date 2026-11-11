@@ -4,7 +4,7 @@ description = "A cli for AI/LLM chat in terminal. Extremely simple and easy to u
 authors = ["ctxinf"]
 repository = "https://github.com/ctxinf/terminal-aichat"
 license = "MIT"
-version = "2.2.1"
+version = "2.3.0"
 edition = "2024"
 homepage = "https://github.com/ctxinf/terminal-aichat"
 
@@ -19,6 +19,7 @@ name = "aichat"
 path = "src/main.rs"
 
 [dependencies]
+indexmap = { version = "2", features = ["serde"] }
 libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"

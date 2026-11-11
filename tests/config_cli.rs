@@ -50,7 +50,7 @@ fn config_init_is_explicit_and_never_overwrites() {
     let source = fs::read_to_string(f.config()).unwrap();
     let parsed: serde_json::Value = serde_json_lenient::from_str(&source).unwrap();
     assert_eq!(parsed["defaultProvider"], "openrouter");
-    assert_eq!(parsed["defaultModel"], "deepseek-flash");
+    assert_eq!(parsed["defaultModel"], "~deepseek/deepseek-flash-latest");
     assert_eq!(parsed["providers"]["openrouter"]["models"][0]["stream"], true);
     assert!(parsed.get("disableStream").is_none());
     assert!(source.find("\"prompts\"").unwrap() < source.find("\"display\"").unwrap());

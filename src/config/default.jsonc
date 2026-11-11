@@ -1,13 +1,18 @@
 {
-  // Select models by ID, or provider/model-id. A provider scopes bare IDs.
+  // Select by model ID. Prefer defaultProvider, then the first match in provider order.
   "defaultProvider": "openrouter",
-  "defaultModel": "deepseek-flash",
+  "defaultModel": "~deepseek/deepseek-flash-latest",
   "defaultPrompt": "sample_prompt",
   // "defaultThinkingLevel": "low", // Arbitrary reasoning_effort string; default low.
   "logLevel": "INFO",
   "providers": {
     "openrouter": {
       "baseUrl": "https://openrouter.ai/api/v1",
+      "headers": {
+        "HTTP-Referer": "https://github.com/ctxinf/terminal-aichat",
+        "X-OpenRouter-Title": "terminal-aichat"
+      },
+      "maxTokens": 2048, // Output token budget; model maxTokens overrides this.
       // Run: aichat config login --provider openrouter
       // "apiKey": { "value": "your-key", "encryption": "" }, // Omit for unauthenticated services.
       // Login writes { "value": "v1:...", "encryption": "generated-passphrase" }.
@@ -22,7 +27,8 @@
       // "extraBody": { "temperature": 0.7 }, // Arbitrary request fields.
       "models": [
         {
-          "id": "deepseek-flash",
+          "id": "~deepseek/deepseek-flash-latest",
+          // "maxTokens": 2048, // Inherits provider budget; default 2048.
           "stream": true, // Per-model streaming; default true.
           // "name": "DeepSeek Flash", // Defaults to id.
           // "reasoning": true, // Default true; false explicitly requests thinking off (API-specific).
