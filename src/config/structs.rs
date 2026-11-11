@@ -83,9 +83,16 @@ impl std::fmt::Debug for AuthConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PromptConfig {
+    /// Legacy system prompt, retained for existing configurations.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -129,6 +136,11 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        for (name, prompt) in &self.prompts {
+            if prompt.system.is_some() && !prompt.content.is_empty() {
+                return Err(format!("prompts.{name}: content and system cannot be combined"));
+            }
+        }
         for (id, auth) in &self.auth {
             if auth.key.as_deref().is_some_and(str::is_empty) || (auth.key.is_none() && auth.value.is_none()) {
                 return Err(format!("auth.{id}: provide a nonempty key or value"));

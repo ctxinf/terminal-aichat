@@ -5,6 +5,7 @@ use crate::utils::logger::init_logger;
 mod config;
 mod cli;
 mod chat;
+mod prompt;
 mod utils;
 mod integrations;
 

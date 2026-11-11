@@ -169,7 +169,7 @@ Example config structure:
     // "openai-account": { "key": "MY_OPENAI_API_KEY", "value": "your-key" }
   },
   "prompts": {
-    "concise": { "content": "Use plain text, give concise output." }
+    "concise": { "system": "Use plain text, give concise output." }
   }
 }
 ```
@@ -199,6 +199,40 @@ aichat --prompt concise "Hello?"
 # Or short form
 aichat -p sample_prompt "Hello?"
 ```
+
+Prompts support separate `system` and `user` templates:
+
+```jsonc
+"prompts": {
+  "context": {
+    "system": "You are a terminal assistant. Directory: {{ cwd }}\nOS: {{ shell(\"cat /etc/os-release\") }}",
+    "user": "Please answer: {{ input }}"
+  }
+}
+```
+
+Supported expressions are `{{ input }}`, `{{ cwd }}`, `{{ env("LANG") }}`,
+and `{{ shell("command -v git") }}`. Omitting `user` sends the original input.
+Functions accept one JSON string argument; escape its quotes in JSON configuration.
+`shell()` inserts stdout and supports pipes, redirection, and `$()`, such as
+`{{ shell("printf '%s' \"$(command -v git)\"") }}`.
+Only these explicit expressions are supported, without Jinja loops, conditions, or filters.
+
+Templates run once before each request; retries reuse the rendered result.
+Listing configuration and help never execute commands. Inserted input, environment
+values, and command output are never parsed again. Commands run in the current
+directory using `/bin/sh -c` on Unix or `cmd /D /S /C` on Windows.
+Commands have a 3-second timeout and a combined 64 KiB stdout/stderr limit.
+Nonzero exits, timeouts, excessive output, and non-UTF-8 stdout abort the request.
+Only trailing line endings are removed from stdout; stderr is used for failure
+diagnostics. On Unix, cleanup kills the entire command process group.
+A hardcoded blacklist rejects common mutation commands, interpreters, and file-writing
+redirection before execution. It is conservative and can also reject these words
+as arguments. Git is limited to path lookup and `--version`. This guardrail is
+not a shell sandbox; use trusted commands in local configuration.
+
+Legacy `content` remains a literal system message and cannot be combined with
+`system`. Usually put context in `system` and `input` in `user` to avoid duplication.
 
 ### Use Custom Config File
 

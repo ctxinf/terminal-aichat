@@ -18,7 +18,8 @@ pub async fn completion(
 ) -> Result<()> {
     // Prepare all fallible config before starting the renderer.
     let headers = create_headers(provider, model, config).await?;
-    let body = create_request(input, prompt, provider, model, config);
+    let messages = crate::prompt::render(prompt, input).await?;
+    let body = create_request(messages, provider, model, config);
     let disable_stream = !body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(provider.timeout_ms))
@@ -132,15 +133,9 @@ async fn create_headers(provider: &ProviderConfig, model: &ModelConfig, config: 
     Ok(headers)
 }
 
-fn create_request(
-    input: &str,
-    prompt: &PromptConfig,
-    provider: &ProviderConfig,
-    model: &ModelConfig,
-    config: &Config,
-) -> Value {
+fn create_request(messages: Value, provider: &ProviderConfig, model: &ModelConfig, config: &Config) -> Value {
     let mut body = json!({ "model": model.id, "stream": !config.disable_stream,
-        "messages": [{ "role": "system", "content": prompt.content }, { "role": "user", "content": input }] });
+        "messages": messages });
     if model.reasoning {
         body["reasoning_effort"] = json!(model.thinking_level.as_ref().unwrap_or(&config.default_thinking_level));
     }
@@ -169,15 +164,16 @@ mod tests {
         }))
         .unwrap()
     }
-    #[test]
-    fn request_merge_and_reasoning() {
+    #[tokio::test]
+    async fn request_merge_and_reasoning() {
         let mut cfg = config();
         let prompt = PromptConfig {
             content: "system".into(),
+            ..Default::default()
         };
         let provider = &cfg.providers["gateway"];
         let model = &provider.models[0];
-        let body = create_request("hello", &prompt, provider, model, &cfg);
+        let body = create_request(crate::prompt::render(&prompt, "hello").await.unwrap(), provider, model, &cfg);
         assert_eq!(body["model"], "vendor/model");
         assert_eq!(body["reasoning_effort"], "custom-effort");
         assert_eq!(body["temperature"], 0.2);
@@ -186,7 +182,7 @@ mod tests {
         cfg.providers.get_mut("gateway").unwrap().models[0].reasoning = false;
         let provider = &cfg.providers["gateway"];
         assert!(
-            create_request("hello", &prompt, provider, &provider.models[0], &cfg)
+            create_request(crate::prompt::render(&prompt, "hello").await.unwrap(), provider, &provider.models[0], &cfg)
                 .get("reasoning_effort")
                 .is_none()
         );
@@ -242,6 +238,8 @@ mod tests {
                     let body: Value = serde_json::from_slice(&request[header_end..header_end + length]).unwrap();
                     assert_eq!(body["model"], "vendor/model");
                     assert_eq!(body["stream"], streaming);
+                    assert_eq!(body["messages"][0]["content"], "system");
+                    assert_eq!(body["messages"][1]["content"], "Question: hello");
                     let (status, content_type, payload) = if attempt == 0 {
                         ("503 Service Unavailable", "application/json", "{}")
                     } else if streaming {
@@ -273,7 +271,9 @@ mod tests {
             provider.timeout_ms = 2000;
             let provider = &cfg.providers["gateway"];
             let prompt = PromptConfig {
-                content: "system".into(),
+                system: Some("system".into()),
+                user: Some("Question: {{ input }}".into()),
+                ..Default::default()
             };
             tokio::time::timeout(
                 Duration::from_secs(5),

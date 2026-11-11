@@ -49,9 +49,12 @@
   },
   "prompts": {
     "sample_prompt": {
-      "content": "You are a terminal assistant. Give concise responses in plain text."
+      "system": "You are a terminal assistant. Give concise responses in plain text.",
+      "user": "{{ input }}"
+      // Templates: {{ cwd }}, {{ env(\"LANG\") }}, {{ shell(\"command -v git\") }}.
+      // shell runs per request, with a 3s timeout and 64 KiB output limit.
     },
-    "concise": { "content": "Use plain text, give extremely concise output" },
-    "shell-exec-or-chat": { "content": INTEGRATION_PROMPT }
+    "concise": { "system": "Use plain text, give extremely concise output" },
+    "shell-exec-or-chat": { "system": INTEGRATION_PROMPT }
   }
 }

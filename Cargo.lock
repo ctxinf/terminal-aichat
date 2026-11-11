@@ -1616,6 +1616,7 @@ dependencies = [
  "dirs",
  "eventsource-stream",
  "futures",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

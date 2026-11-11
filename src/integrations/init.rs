@@ -101,7 +101,7 @@ fn insert_prompt_into_jsonc(
     prompt_name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let entry = format!(
-        "    \"{name}\": {{\n      \"content\": {json}\n    }}",
+        "    \"{name}\": {{\n      \"system\": {json}\n    }}",
         name = prompt_name,
         json = serde_json::to_string(SHELL_INTEGRATION_PROMPT)?
     );
@@ -174,7 +174,7 @@ fn insert_prompt_into_jsonc(
     let mut config: Config = serde_json_lenient::from_str(source)?;
     config.prompts.insert(
         prompt_name.to_string(),
-        PromptConfig { content: SHELL_INTEGRATION_PROMPT.to_string() },
+        PromptConfig { system: Some(SHELL_INTEGRATION_PROMPT.to_string()), ..Default::default() },
     );
     Ok(serde_json::to_string_pretty(&config)?)
 }

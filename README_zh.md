@@ -161,7 +161,7 @@ aichat -l
     // "openai-account": { "key": "MY_OPENAI_API_KEY", "value": "your-key" }
   },
   "prompts": {
-    "concise": { "content": "Use plain text, give concise output." }
+    "concise": { "system": "Use plain text, give concise output." }
   }
 }
 ```
@@ -191,6 +191,37 @@ aichat --prompt concise "Hello?"
 # 或者短格式
 aichat -p sample_prompt "Hello?"
 ```
+
+提示词可拆分为 `system` 和 `user`，两者都支持以下模板：
+
+```jsonc
+"prompts": {
+  "context": {
+    "system": "你是终端助手。目录：{{ cwd }}\n系统：{{ shell(\"cat /etc/os-release\") }}",
+    "user": "请回答：{{ input }}"
+  }
+}
+```
+
+支持 `{{ input }}`、`{{ cwd }}`、`{{ env("LANG") }}` 和
+`{{ shell("command -v git") }}`。省略 `user` 时直接发送原始输入。
+函数接受一个 JSON 字符串参数；模板内的双引号在 JSON 配置中需要转义。
+`shell()` 将 stdout 插入提示词，支持管道、重定向和 `$()`，例如
+`{{ shell("printf '%s' \"$(command -v git)\"") }}`。
+仅支持这些显式表达式，不支持 Jinja 的循环、条件和过滤器。
+
+命令仅在发送请求前执行，每次请求渲染一次，网络重试复用结果；
+查看配置和帮助不会执行。插入的用户输入、环境变量和命令输出不会再次解析。
+命令在当前工作目录执行，Unix 使用 `/bin/sh -c`，Windows 使用 `cmd /D /S /C`。
+超时为 3 秒，stdout 与 stderr 合计上限 64 KiB；非零退出、超时、
+输出超限或 stdout 不是 UTF-8 都会中止请求。stdout 仅去掉末尾换行，
+stderr 仅用于失败诊断。Unix 超时或失败时会终止整个命令进程组。
+执行前使用代码写死的黑名单，拦截常见变更命令、解释器和写文件重定向。
+检查较保守，作为参数出现的黑名单词也可能被拒绝；Git 仅允许路径查询和 `--version`。
+黑名单不是 shell 沙箱，配置中仍应只使用你信任的命令。
+
+旧的 `content` 仍作为原样 system 消息兼容，不能与 `system` 同时配置。
+通常在 `system` 放上下文，在 `user` 使用 `input`，避免重复发送问题。
 
 ### 使用自定义配置文件
 
