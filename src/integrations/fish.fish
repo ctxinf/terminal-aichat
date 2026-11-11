@@ -36,7 +36,7 @@ end
 
 function _aichat_run
     env -u TERMINAL_AICHT_INIT_INTEGRATION \
-        TERMINAL_AICHT_PROMPT={{PROMPT_NAME}} \
+        {{MODEL_ENV}}TERMINAL_AICHT_PROMPT={{PROMPT_NAME}} \
         TERMINAL_AICHT_CONFIG={{CONFIG_PATH}} \
         TERMINAL_AICHT_PURE=true TERMINAL_AICHT_DISABLE_STREAM=true \
         aichat --integration-shell {{SHELL_NAME}} -- $argv

@@ -12,7 +12,7 @@ pub enum IntegrationShell {
     name = "aichat",
     version,
     about = "A terminal AI/LLM chat tool.",
-    help_template = "{name} {version}\n{about}\n\n{usage-heading} {usage}\n\n    \x1b[32maichat\x1b[0m \"how to view ubuntu release version\"  #aichat \"<INPUT MESSAGE>\"\n    \x1b[32maichat\x1b[0m how to view ubuntu release version    #aichat <INPUT MESSAGE>\n    \x1b[32maichat\x1b[0m -- how to use `ps` to view process   #aichat -- <INPUT MESSAGE>\n    cat input.txt | \x1b[32maichat\x1b[0m\n    cat input.txt | \x1b[32maichat\x1b[0m \"explain this\"\n\nOptions:\n{options}{after-help}\n",
+    help_template = "{name} {version}\n{about}\n\n{usage-heading} {usage}\n\n    \x1b[32maichat\x1b[0m \"how to view ubuntu release version\"  #aichat \"<INPUT MESSAGE>\"\n    \x1b[32maichat\x1b[0m how to view ubuntu release version    #aichat <INPUT MESSAGE>\n    \x1b[32maichat\x1b[0m -- how to use `ps` to view process   #aichat -- <INPUT MESSAGE>\n    cat input.txt | \x1b[32maichat\x1b[0m\n    cat input.txt | \x1b[32maichat\x1b[0m \"explain this\"\n\n{all-args}{after-help}\n",
     after_help = "Configuration commands: aichat config --help",
     arg_required_else_help = false,
     disable_help_flag = false,
@@ -26,6 +26,18 @@ pub struct Cli {
     /// Specify prompt configuration to use
     #[arg(short, long)]
     pub prompt: Option<String>,
+
+    /// Continue the current terminal session (history is saved only with -c)
+    #[arg(short = 'c', long = "continue")]
+    pub continue_session: bool,
+
+    /// Start a fresh session (sub-option of -c/--continue; requires -c)
+    #[arg(
+        long,
+        requires = "continue_session",
+        help_heading = "Session options (require -c/--continue)"
+    )]
+    pub new_session: bool,
 
     /// Use pure output mode (no extra text and color rendering)
     #[arg(long, num_args = 0..=1, default_missing_value = "true", require_equals = true)]
@@ -42,6 +54,7 @@ pub struct Cli {
     /// Print shell integration script for the given shell and exit.
     /// Combine with `--prompt <name>` to choose which prompt key the
     /// generated script will call (default: shell-exec-or-chat).
+    /// Combine with `--model <id>` to set the integration model default.
     #[arg(long, value_name = "SHELL", value_enum)]
     pub init_integration: Option<IntegrationShell>,
 

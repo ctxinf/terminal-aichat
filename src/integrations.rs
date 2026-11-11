@@ -50,10 +50,20 @@ fn template_for(shell: IntegrationShell) -> &'static str {
 
 /// Render a shell integration script with the user-chosen prompt name
 /// substituted in. The templates contain the placeholder `{{PROMPT_NAME}}`.
+#[allow(dead_code)]
 pub fn render_script(
     shell: IntegrationShell,
     prompt_name: &str,
     config_path: &std::path::Path,
+) -> Result<String, Box<dyn std::error::Error>> {
+    render_script_with_model(shell, prompt_name, config_path, None)
+}
+
+pub fn render_script_with_model(
+    shell: IntegrationShell,
+    prompt_name: &str,
+    config_path: &std::path::Path,
+    model: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let path = std::path::absolute(config_path)?;
     let path = path.to_str().ok_or("config path is not Unicode")?;
@@ -66,7 +76,13 @@ pub fn render_script(
         IntegrationShell::Zsh => "zsh",
         IntegrationShell::Fish => "fish",
     };
+    let model_value = quote(model.unwrap_or_default());
+    let model = model
+        .map(|m| format!("TERMINAL_AICHT_MODEL={} ", quote(m)))
+        .unwrap_or_default();
     let values = [
+        ("{{MODEL_ENV}}", model),
+        ("{{MODEL_VALUE}}", model_value),
         ("{{PROMPT_NAME}}", quote(prompt_name)),
         ("{{CONFIG_PATH}}", quote(path)),
         ("{{SHELL_NAME}}", shell_name.to_owned()),

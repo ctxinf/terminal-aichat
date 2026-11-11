@@ -36,11 +36,37 @@ except Exception: sys.exit(1)' 2>/dev/null
 # The prompt itself lives under prompts in your selected config file.
 # so you can read and edit it — run `aichat config show` to see the location.
 _aichat_run() {
-  env -u TERMINAL_AICHT_INIT_INTEGRATION \
-    TERMINAL_AICHT_PROMPT={{PROMPT_NAME}} \
-    TERMINAL_AICHT_CONFIG={{CONFIG_PATH}} \
+  local prompt={{PROMPT_NAME}} config={{CONFIG_PATH}}
+  local -a options
+  options=()
+  local model={{MODEL_VALUE}}
+  while (( $# )); do
+    case "$1" in
+      -p|--prompt|-m|--model)
+        if (( $# < 2 )); then
+          print -u2 -- "aichat: $1 requires a value"
+          return 2
+        fi
+        if [[ "$1" == -p || "$1" == --prompt ]]; then
+          prompt="$2"
+        else
+          model="$2"
+        fi
+        shift 2 ;;
+      --prompt=*) prompt="${1#*=}"; shift ;;
+      --model=*) model="${1#*=}"; shift ;;
+      -c|--continue|--new-session|-h|--help)
+        options+=("$1"); shift ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
+  if [[ -n "$model" ]]; then options+=(--model "$model"); fi
+  env -u TERMINAL_AICHT_INIT_INTEGRATION -u TERMINAL_AICHT_MODEL \
+    TERMINAL_AICHT_PROMPT="$prompt" \
+    TERMINAL_AICHT_CONFIG="$config" \
     TERMINAL_AICHT_PURE=true TERMINAL_AICHT_DISABLE_STREAM=true \
-    aichat --integration-shell {{SHELL_NAME}} -- "$@"
+    aichat --integration-shell {{SHELL_NAME}} "${options[@]}" -- "$@"
 }
 
 _aichat_show_chat() {

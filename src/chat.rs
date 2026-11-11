@@ -8,6 +8,7 @@ use std::{error::Error, time::Duration};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
+#[cfg(test)]
 pub async fn completion(
     input: &str,
     provider_key: &str,
@@ -18,6 +19,31 @@ pub async fn completion(
     config: &Config,
     integration_shell: Option<crate::cli::structs::IntegrationShell>,
 ) -> Result<Value> {
+    completion_with_session(
+        input,
+        provider_key,
+        provider,
+        model,
+        prompt_name,
+        prompt,
+        config,
+        integration_shell,
+        None,
+    )
+    .await
+}
+
+pub async fn completion_with_session(
+    input: &str,
+    provider_key: &str,
+    provider: &ProviderConfig,
+    model: &ModelConfig,
+    prompt_name: &str,
+    prompt: &PromptConfig,
+    config: &Config,
+    integration_shell: Option<crate::cli::structs::IntegrationShell>,
+    session: Option<&crate::session::Session>,
+) -> Result<Value> {
     // Prepare all fallible config before starting the renderer.
     let headers = create_headers(provider, model, config).await?;
     let mut messages = crate::prompt::render(prompt, input).await?;
@@ -27,6 +53,11 @@ pub async fn completion(
             "{system}\nCurrent shell: {shell:?}. Operating system: {}. Generate commands for this shell and OS.",
             std::env::consts::OS
         ));
+    }
+    let current_user = messages[1].clone();
+    if let Some(session) = session {
+        let list = messages.as_array_mut().ok_or("invalid prompt messages")?;
+        list.splice(1..1, session.history.clone());
     }
     crate::log_trace!("Rendered prompt messages: {messages}");
     let body = create_request(messages, provider, model, config);
@@ -72,6 +103,7 @@ pub async fn completion(
         display: config.display.clone(),
     });
     let mut usage = Value::Null;
+    let mut answer = String::new();
     let result: Result<()> = async {
         if disable_stream {
             let response: Value = response.json().await.map_err(|_| "invalid chat response")?;
@@ -84,6 +116,7 @@ pub async fn completion(
                 tx.send(RenderEvent::Reasoning(text.into())).await?;
             }
             if let Some(content) = message["content"].as_str() {
+                answer.push_str(content);
                 tx.send(RenderEvent::Content(content.to_owned())).await?;
             }
         } else {
@@ -115,6 +148,7 @@ pub async fn completion(
                             tx.send(RenderEvent::Reasoning(text.into())).await?;
                         }
                         if let Some(content) = choice["delta"]["content"].as_str() {
+                            answer.push_str(content);
                             tx.send(RenderEvent::Content(content.to_owned())).await?;
                         }
                     }
@@ -130,6 +164,9 @@ pub async fn completion(
     drop(tx);
     task.await?;
     result?;
+    if let Some(session) = session {
+        session.save(current_user, json!({"role":"assistant", "content":answer}))?;
+    }
     Ok(usage)
 }
 

@@ -40,7 +40,10 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_deref()
             .unwrap_or(integrations::DEFAULT_INTEGRATION_PROMPT_NAME);
         integrations::init::ensure_integration_prompt(&config_manager, prompt_name)?;
-        print!("{}", integrations::render_script(shell, prompt_name, &config_path)?);
+        print!(
+            "{}",
+            integrations::render_script_with_model(shell, prompt_name, &config_path, cli.model.as_deref())?
+        );
         return Ok(());
     }
     if std::env::args_os().len() == 1 && io::stdin().is_terminal() {
@@ -173,7 +176,12 @@ async fn handle_chat_command(
         &input.safe_substring(20)
     );
 
-    let usage = chat::completion(
+    let session = if cli.continue_session {
+        Some(crate::session::Session::open(cli.new_session)?)
+    } else {
+        None
+    };
+    let usage = chat::completion_with_session(
         &input,
         provider_key,
         provider,
@@ -182,6 +190,7 @@ async fn handle_chat_command(
         prompt_config,
         runtime_config,
         cli.integration_shell,
+        session.as_ref(),
     )
     .await?;
 
@@ -244,6 +253,14 @@ fn merge_config(file_config: &Config, cli: &Cli) -> Result<Config, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn session_option_requires_continue() {
+        assert!(Cli::try_parse_from(["aichat", "--new-session", "hello"]).is_err());
+        let cli = Cli::try_parse_from(["aichat", "-c", "--new-session", "hello"]).unwrap();
+        assert!(cli.continue_session && cli.new_session);
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("Session options (require -c/--continue)"));
+    }
     fn config() -> Config {
         serde_json::from_value(serde_json::json!({
             "providers": {

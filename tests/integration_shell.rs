@@ -321,3 +321,21 @@ fn python_fallback_decodes_json_without_sed() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("install jq or python3"));
 }
+
+#[test]
+fn zsh_options_override_defaults_and_forward_session_flags() {
+    let f = Fixture::new();
+    let script = f.script("zsh");
+    for action in [
+        "_aichat_ask -p override -m selected -c --new-session hello",
+        "_aichat_ask_exec --prompt=override --model=selected --continue --new-session hello",
+    ] {
+        let output = f.run("zsh", &script, action, "", false, true);
+        assert!(output.status.success(), "{:?}", output);
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(text.starts_with("override\n"), "{text}");
+        assert!(text.contains("--model\nselected\n--\nhello"), "{text}");
+        assert!(text.contains("--new-session\n"), "{text}");
+        assert!(text.contains("\n-c\n") || text.contains("\n--continue\n"), "{text}");
+    }
+}

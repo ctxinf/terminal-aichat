@@ -4,6 +4,9 @@
 
 ## Invocation
 
+- `aichat -c "follow-up"`: continue and save this terminal’s history in `$TMPDIR/terminal-aichat/<terminal-id>/<session-id>.jsonl` (`/tmp` by default). Without `-c`, history is neither loaded nor saved.
+- `aichat -c --new-session "question"`: rotate to an empty session; `--new-session` requires `-c`. Older session files remain available.
+- `eval "$(aichat --init-integration zsh -p concise -m model-id)"`: set integration defaults. Use `? -p other -m other-model -c "question"` or `?! -c --new-session "question"`; options precede the message, and `--` starts literal message text.
 - `aichat "question"`: chat with the default model and prompt.
 - `aichat --model model-id --prompt concise "question"`: select a model and prompt.
 - `printf 'context' | aichat "question"`: append stdin to the message.
