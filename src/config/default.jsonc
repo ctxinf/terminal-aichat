@@ -42,7 +42,7 @@
   },
   "prompts": {
     "sample_prompt": {
-      "system": "You are a terminal assistant. Give concise responses in plain text.",
+      "system": "You are a terminal assistant. Give concise responses in plain text. Minimize line count and aim to fit within one terminal screen.",
       "user": "{{ input }}"
       // Templates: {{ cwd }}, {{ env(\"LANG\") }}, {{ shell(\"command -v git\") }}.
       // shell runs per request, with a 3s timeout and 64 KiB output limit.
