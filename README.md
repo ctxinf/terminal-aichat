@@ -139,44 +139,38 @@ The config file uses JSONC format, which supports comments. A complete example i
 Example config structure:
 ```jsonc
 {
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5-mini",
+  "defaultPrompt": "concise",
+  "defaultThinkingLevel": "low",
   "providers": {
     "openai": {
-      "name": "OpenAI",
-      "baseURL": "https://api.openai.com/v1",
-      "apiKey": "sk-...",
-      "models": {
-        "gpt-4o": {
-          "name": "gpt-4o",
-          "temperature": 0.7
-        },
-        "gpt-5-mini": {
-          "name": "gpt-5-mini",
-          "temperature": 0.5
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "$MY_OPENAI_API_KEY",
+      "models": [
+        { "id": "gpt-5-mini" },
+        {
+          "id": "custom-model",
+          "name": "My model",
+          "reasoning": false,
+          "extraBody": { "temperature": 0.7 },
+          "removeBodyFields": ["store"]
         }
-      }
+      ]
     },
-    "openrouter": {
-      "name": "OpenRouter",
-      "baseURL": "https://openrouter.ai/api/v1",
-      "apiKey": "sk-or-...",
-      "models": {
-        "meta-llama/llama-3-70b-instruct": {
-          "name": "llama-3",
-          "temperature": 0.3
-        }
-      }
+    "local": {
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "models": [{ "id": "local-model" }]
     }
+  },
+  "auth": {
+    // Optional fallback when MY_OPENAI_API_KEY is unset.
+    // Encrypted values use a matching generated encryption passphrase.
+    // "openai-account": { "key": "MY_OPENAI_API_KEY", "value": "your-key" }
   },
   "prompts": {
-    "sample_prompt": {
-      "content": "You are a terminal assistant. You are giving help to user in the terminal. Give concise responses whenever possible. Because of terminal cannot render markdown, DO NOT contain any markdown syntax(`,```, #, ...) in your response, use plain text only.\n"
-    }
-  },
-  "default-model": "gpt-5-mini",
-  "default-prompt": "sample_prompt",
-  "disable-stream": false,
-  "pure": false,
-  "verbose": false
+    "concise": { "content": "Use plain text, give concise output." }
+  }
 }
 ```
 
@@ -184,15 +178,15 @@ Example config structure:
 
 ```sh
 # Use a specific model selector (searches all providers)
-# - model key: "gpt-4o"
-# - or provider/model_key: "openrouter/meta-llama/llama-3-70b-instruct"
+# - model ID: "gpt-4o"
+# - or provider/model-id: "openrouter/meta-llama/llama-3-70b-instruct"
 aichat --model gpt-4o "Hello?"
 
 # Or short form
 aichat -m gpt-5-mini "Hello?"
 
-# When model keys conflict across providers, or when model keys contain '/',
-# use provider/model_key to disambiguate:
+# When model IDs conflict across providers, or when model IDs contain '/',
+# use provider/model-id to disambiguate:
 aichat -m openrouter/meta-llama/llama-3-70b-instruct "Hello?"
 ```
 
@@ -214,13 +208,42 @@ aichat --config /path/to/config.jsonc --list
 aichat --config /path/to/config.jsonc "Hello?"
 ```
 
-### Use Temporary API Key via Environment Variable
+### Model schema and request options
 
-> Useful for avoiding persistent API key storage or for testing.
-> It will override API key in final request.
+Models are arrays of objects with required `id` (the request model) and optional
+`name` (display name). `defaultProvider` scopes bare model IDs/names; an explicit
+`provider/model-id` selects another provider. Without a default provider, IDs
+are searched globally and ambiguous matches are errors. IDs take precedence over names.
+
+`reasoning` defaults to true. `thinkingLevel` overrides `defaultThinkingLevel`
+(default `low`) and is sent directly as `reasoning_effort`. Set `reasoning: false`
+to omit it. Provider `extraBody` fields override the generated request, model
+`extraBody` fields override provider fields, and `removeBodyFields` removes
+specified top-level fields last. Merging is shallow; nested values are replaced.
+Put API-specific fields such as `temperature` in `extraBody`.
+
+Provider options: `api` (only `openai-completions`, the default), `headers`,
+`queryParams`, `timeoutMs` (120000), `maxRetries` (2), and `extraBody`.
+Model `headers` override provider headers, case insensitively; custom headers
+override generated authentication. Headers accept `$NAME` / `${NAME}` interpolation
+and explicit `!command` values. Commands run only for the selected model on request,
+time out after 10 seconds, and successful results are cached in the process.
+Use command headers only in trusted configuration.
+
+### API credentials
+
+Provider `apiKey` accepts a literal string or a whole `$NAME` / `${NAME}` reference.
+A reference first reads that environment variable; if unset, it finds the top-level
+`auth` entry whose `key` equals `NAME`. Auth entries allow only `key`, `value`,
+and `encryption` strings. `value` is literal unless `encryption` is present;
+then it must be a v1 encrypted packet (AES-256-GCM with Argon2id).
+Neither field interpolates variables or runs commands. An empty/invalid environment
+credential or a decryption failure is an error. No implicit `OPENAI_API_KEY` lookup
+or environment-file loading occurs. Omit `apiKey` for unauthenticated services
+(or use `"auth": {"type": "none"}`).
 
 ```sh
-export OPENAI_API_KEY=sk-***************
+export MY_OPENAI_API_KEY=your-key
 aichat "Hello?"
 ```
 
