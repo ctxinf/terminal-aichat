@@ -51,10 +51,10 @@ pub async fn completion(
             attempt += 1;
             continue;
         }
-        // Do not expose server error bodies or URLs: they may contain credentials.
+        // Keep transport errors free of request URLs and credentials.
         let response = response.map_err(|_| "chat request failed (connection or timeout)")?;
         if !response.status().is_success() {
-            return Err(format!("chat request failed: HTTP {}", response.status()).into());
+            return Err(http_error(response, &headers).await.into());
         }
         break response;
     };
@@ -129,6 +129,61 @@ pub async fn completion(
     task.await?;
     result?;
     Ok(usage)
+}
+
+async fn http_error(mut response: reqwest::Response, headers: &HeaderMap) -> String {
+    let summary = format!("chat request failed: HTTP {}", response.status());
+    // Bound diagnostic reads; HTML proxy pages and oversized bodies are not useful.
+    let mut body = Vec::new();
+    while let Ok(Some(chunk)) = response.chunk().await {
+        if body.len() + chunk.len() > 64 * 1024 {
+            return summary;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let text = String::from_utf8_lossy(&body);
+    let message = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .or_else(|| value.get("error").and_then(Value::as_str))
+            .or_else(|| value.get("message").and_then(Value::as_str))
+            .unwrap_or_default()
+            .to_owned(),
+        Err(_) if !text.trim_start().starts_with('<') => text.into_owned(),
+        Err(_) => String::new(),
+    };
+    // Some upstream errors echo authentication headers. Keep their values private.
+    let mut message = message;
+    for value in headers
+        .iter()
+        .filter(|(name, _)| {
+            let name = name.as_str();
+            name.contains("authorization")
+                || name.contains("key")
+                || name.contains("token")
+                || name.contains("secret")
+                || name.contains("cookie")
+        })
+        .filter_map(|(_, value)| value.to_str().ok())
+    {
+        for secret in [value, value.strip_prefix("Bearer ").unwrap_or(value)] {
+            if !secret.is_empty() {
+                message = message.replace(secret, "[redacted]");
+            }
+        }
+    }
+    let message: String = message
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .take(4096)
+        .collect();
+    let message = message.trim();
+    if message.is_empty() {
+        summary
+    } else {
+        format!("{summary}: {message}")
+    }
 }
 
 fn reasoning_text(message: &Value) -> Option<&str> {
@@ -543,6 +598,84 @@ mod tests {
         assert_eq!(headers["x-route"], "model");
         assert_eq!(headers["x-shared"], "shared");
     }
+    #[tokio::test]
+    async fn http_errors_include_upstream_diagnostics() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+        for (status, payload, expected) in [
+            (
+                "400 Bad Request",
+                r#"{"error":{"message":"deepseek-flash is not a valid model ID"}}"#,
+                "deepseek-flash is not a valid model ID",
+            ),
+            (
+                "404 Not Found",
+                r#"{"error":{"message":"ZDR violation (account settings): 9 endpoints excluded; configurable at https://openrouter.ai/settings/privacy"}}"#,
+                "ZDR violation (account settings)",
+            ),
+            (
+                "402 Payment Required",
+                r#"{"error":{"message":"can only afford 555 tokens"}}"#,
+                "can only afford 555 tokens",
+            ),
+            ("400 Bad Request", r#"{"message":"invalid request"}"#, "invalid request"),
+            ("400 Bad Request", "upstream unavailable", "upstream unavailable"),
+            (
+                "400 Bad Request",
+                r#"{"error":{"message":"invalid Bearer example"}}"#,
+                "invalid [redacted]",
+            ),
+            ("404 Not Found", "<html>proxy error</html>", ""),
+            ("400 Bad Request", "{}", ""),
+            ("400 Bad Request", "", ""),
+        ] {
+            for streaming in [false, true] {
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let address = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut buffer = [0; 8192];
+                    socket.read(&mut buffer).await.unwrap();
+                    let response = format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                        payload.len()
+                    );
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                });
+                let mut cfg = config();
+                let provider = cfg.providers.get_mut("gateway").unwrap();
+                provider.base_url = format!("http://{address}/v1");
+                provider.models[0].stream = streaming;
+                provider.max_retries = 0;
+                let provider = &cfg.providers["gateway"];
+                let error = completion(
+                    "hi",
+                    provider,
+                    &provider.models[0],
+                    "test",
+                    &PromptConfig::default(),
+                    &cfg,
+                    None,
+                )
+                .await
+                .unwrap_err()
+                .to_string();
+                assert!(
+                    error.starts_with(&format!("chat request failed: HTTP {status}")),
+                    "{error}"
+                );
+                assert!(error.contains(expected), "{error}");
+                assert!(!error.contains("example"), "{error}");
+                if expected.is_empty() {
+                    assert_eq!(error, format!("chat request failed: HTTP {status}"));
+                }
+                server.await.unwrap();
+            }
+        }
+    }
+
     #[tokio::test]
     async fn mock_api_streaming_nonstreaming_and_retries() {
         use tokio::{

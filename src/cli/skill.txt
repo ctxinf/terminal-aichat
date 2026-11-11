@@ -112,3 +112,5 @@ Streaming is configured per model with `"stream": true|false` (default true). Th
 DEBUG logs prompt template fields, commands and failures, including captured output and exit status. TRACE also logs rendered messages and successful command stdout.
 
 Provider and model accept `maxTokens` (positive integer). Requests send `max_tokens`: model maxTokens overrides provider maxTokens, otherwise 2048. extraBody overrides this value and removeBodyFields applies last. This limits the output budget used for OpenRouter credit checks. Increase the budget for longer replies. Generated OpenRouter configs include HTTP-Referer and X-OpenRouter-Title for application attribution. Existing configs are not rewritten.
+
+HTTP failures report the status and upstream error.message (also message or string error), including model, credit and routing errors. Plain-text errors are supported; empty, HTML and oversized error bodies fall back to the HTTP status. Known authentication header values are redacted from diagnostics.
