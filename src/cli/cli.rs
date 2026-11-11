@@ -73,7 +73,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !runtime_config.pure {
         let mut footer = Vec::new();
         if runtime_config.display.duration {
-            let duration = format!("{}ms", started.elapsed().as_secs_f64() * 1000.0);
+            let duration = format!("{:.2}s", started.elapsed().as_secs_f64());
             footer.push(if io::stdout().is_terminal() {
                 duration.dark_green().to_string()
             } else {
@@ -175,6 +175,7 @@ async fn handle_chat_command(
 
     let usage = chat::completion(
         &input,
+        provider_key,
         provider,
         model,
         prompt_name,

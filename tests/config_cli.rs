@@ -59,7 +59,7 @@ fn config_init_is_explicit_and_never_overwrites() {
         parsed["providers"]["openrouter"]["models"][0]["id"]
     );
     assert_eq!(parsed["display"], serde_json::json!({}));
-    for field in ["usage", "model", "prompt", "reasoning", "duration"] {
+    for field in ["usage", "model", "provider", "prompt", "reasoning", "duration"] {
         assert!(source.contains(&format!("// \"{field}\": false")));
     }
     fs::write(f.config(), "invalid config must be preserved").unwrap();

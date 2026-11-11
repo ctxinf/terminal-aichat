@@ -11,7 +11,7 @@
 - `aichat config show`: list configured models, prompts and config path.
 - `aichat config init`: create the default config and exit; warn without overwriting if it exists. Combine with `aichat config --config PATH init` or TERMINAL_AICHT_CONFIG to choose the path; missing parent directories are created.
 - `aichat --config ./config.jsonc "question"`: select a JSON/JSONC config.
-- `aichat --display=usage,model,prompt,reasoning,duration "question"`: select additional output.
+- `aichat --display=usage,model,provider,prompt,reasoning,duration "question"`: select additional output.
 - `aichat --display= "question"`: clear display options (the default).
 - `aichat --log-level DEBUG "question"`: enable diagnostics.
 - `aichat --skill`: print this documentation without loading configuration.
@@ -89,7 +89,7 @@ Environment variables override explicit CLI values, which override config values
 
 Boolean variables accept true/false or 1/0, case insensitive; CLI booleans also support `--pure=false`. Empty values fail except DISPLAY, where empty clears all options. Logging accepts ERROR, WARN, INFO, DEBUG, TRACE. Bare LOG_LEVEL is ignored. The program inherits process variables and never loads environment files.
 
-Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Model and prompt share a line with a green > marker, green labels and blue names on terminals. Duration and usage share a footer, e.g. 1200ms  ↑ 350 tokens(200 cached) ↓ 356 tokens. Token counts use k/m units from 1000/1000000; cached tokens below 1000 show a count, otherwise a percentage of input. Unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
+Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Model and prompt share a line with a green > marker, green labels, non-bold cyan model values and non-bold blue prompt values on terminals. Enable provider together with model to append @<provider ID> to the model value; provider alone adds no field. Duration and usage share a footer, e.g. 1.20s  ↑ 350 tokens(200 cached) ↓ 356 tokens. Token counts use k/m units from 1000/1000000; cached tokens below 1000 show a count, otherwise a percentage of input. Unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
 
 ## Shell integration
 

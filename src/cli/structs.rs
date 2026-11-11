@@ -45,7 +45,7 @@ pub struct Cli {
     #[arg(long, value_name = "SHELL", value_enum)]
     pub init_integration: Option<IntegrationShell>,
 
-    /// Display usage,model,prompt,reasoning,duration (comma separated; empty clears)
+    /// Display usage,model,provider,prompt,reasoning,duration (comma separated; empty clears)
     #[arg(long)]
     pub display: Option<String>,
 

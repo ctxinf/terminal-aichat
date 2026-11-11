@@ -6,8 +6,18 @@ use tokio::sync::mpsc::{self, Sender};
 pub struct RenderConfig {
     pub pure: bool,
     pub model_name: String,
+    pub provider_id: String,
     pub prompt_config_name: String,
     pub display: DisplayConfig,
+}
+impl RenderConfig {
+    fn model_value(&self) -> String {
+        if self.display.provider {
+            format!("{}@{}", self.model_name, self.provider_id)
+        } else {
+            self.model_name.clone()
+        }
+    }
 }
 pub enum RenderEvent {
     Content(String),
@@ -30,11 +40,8 @@ impl ResponseRenderer {
                     } else {
                         "model:".into()
                     };
-                    let name = if terminal {
-                        config.model_name.dark_blue().bold().to_string()
-                    } else {
-                        config.model_name
-                    };
+                    let value = config.model_value();
+                    let name = if terminal { value.cyan().to_string() } else { value };
                     fields.push(format!("{label} {name}"));
                 }
                 if config.display.prompt {
@@ -44,7 +51,7 @@ impl ResponseRenderer {
                         "prompt:".into()
                     };
                     let name = if terminal {
-                        config.prompt_config_name.dark_blue().bold().to_string()
+                        config.prompt_config_name.blue().to_string()
                     } else {
                         config.prompt_config_name
                     };
@@ -100,5 +107,27 @@ impl ResponseRenderer {
             let _ = std::io::stdout().flush();
         });
         (tx, task)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn provider_suffix_is_opt_in() {
+        let mut config = RenderConfig {
+            pure: false,
+            model_name: "DeepSeek(vendor/model)".into(),
+            provider_id: "gateway".into(),
+            prompt_config_name: "test".into(),
+            display: DisplayConfig::default(),
+        };
+        assert_eq!(config.model_value(), "DeepSeek(vendor/model)");
+        config.display = DisplayConfig::parse("model,provider").unwrap();
+        assert!(config.display.model && config.display.provider);
+        assert_eq!(config.model_value(), "DeepSeek(vendor/model)@gateway");
+        let parsed: DisplayConfig = serde_json::from_str(r#"{"model":true,"provider":true}"#).unwrap();
+        assert_eq!(parsed, config.display);
+        assert!(!DisplayConfig::parse("").unwrap().provider);
     }
 }

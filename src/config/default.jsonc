@@ -55,6 +55,7 @@
   "display": {
     // "usage": false,
     // "model": false,
+    // "provider": false, // Append @provider to the model value.
     // "prompt": false,
     // "reasoning": false,
     // "duration": false

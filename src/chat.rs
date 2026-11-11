@@ -10,6 +10,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 pub async fn completion(
     input: &str,
+    provider_key: &str,
     provider: &ProviderConfig,
     model: &ModelConfig,
     prompt_name: &str,
@@ -61,6 +62,7 @@ pub async fn completion(
     let renderer = ResponseRenderer::new();
     let (tx, task) = renderer.start_render(RenderConfig {
         pure: config.pure,
+        provider_id: provider_key.into(),
         model_name: model
             .name
             .as_ref()
@@ -375,6 +377,7 @@ mod tests {
         let provider = &cfg.providers["gateway"];
         completion(
             "hello",
+            "gateway",
             provider,
             &provider.models[0],
             "test",
@@ -652,6 +655,7 @@ mod tests {
                 let provider = &cfg.providers["gateway"];
                 let error = completion(
                     "hi",
+                    "gateway",
                     provider,
                     &provider.models[0],
                     "test",
@@ -763,6 +767,7 @@ mod tests {
                 Duration::from_secs(5),
                 completion(
                     "hello",
+                    "gateway",
                     provider,
                     &provider.models[0],
                     "test",

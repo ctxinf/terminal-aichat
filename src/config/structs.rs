@@ -94,6 +94,7 @@ pub struct PromptConfig {
 pub struct DisplayConfig {
     pub usage: bool,
     pub model: bool,
+    pub provider: bool,
     pub prompt: bool,
     pub reasoning: bool,
     pub duration: bool,
@@ -108,10 +109,11 @@ impl DisplayConfig {
             match item.trim() {
                 "usage" => result.usage = true,
                 "model" => result.model = true,
+                "provider" => result.provider = true,
                 "prompt" => result.prompt = true,
                 "reasoning" => result.reasoning = true,
                 "duration" => result.duration = true,
-                _ => return Err("display: expected usage,model,prompt,reasoning,duration".into()),
+                _ => return Err("display: expected usage,model,provider,prompt,reasoning,duration".into()),
             }
         }
         Ok(result)
