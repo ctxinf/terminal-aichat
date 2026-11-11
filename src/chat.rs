@@ -15,10 +15,11 @@ pub async fn completion(
     prompt_name: &str,
     prompt: &PromptConfig,
     config: &Config,
-) -> Result<()> {
+) -> Result<Value> {
     // Prepare all fallible config before starting the renderer.
     let headers = create_headers(provider, model, config).await?;
     let messages = crate::prompt::render(prompt, input).await?;
+    crate::log_trace!("Rendered prompt messages: {messages}");
     let body = create_request(messages, provider, model, config);
     let disable_stream = !body.get("stream").and_then(Value::as_bool).unwrap_or(false);
     let client = reqwest::Client::builder()
@@ -106,10 +107,7 @@ pub async fn completion(
     drop(tx);
     task.await?;
     result?;
-    if config.display.usage && !config.pure {
-        println!("\n{}", format_usage(&usage));
-    }
-    Ok(())
+    Ok(usage)
 }
 
 fn reasoning_text(message: &Value) -> Option<&str> {
@@ -118,22 +116,37 @@ fn reasoning_text(message: &Value) -> Option<&str> {
         .or_else(|| message["reasoning"].as_str())
 }
 
-fn format_usage(usage: &Value) -> String {
+fn format_tokens(tokens: u64) -> String {
+    let (value, suffix) = if tokens >= 1_000_000 {
+        (tokens as f64 / 1_000_000.0, "m")
+    } else if tokens >= 1_000 {
+        (tokens as f64 / 1_000.0, "k")
+    } else {
+        return tokens.to_string();
+    };
+    let number = format!("{value:.2}");
+    format!("{}{suffix}", number.trim_end_matches('0').trim_end_matches('.'))
+}
+
+pub(crate) fn format_usage(usage: &Value) -> String {
     let input = usage["prompt_tokens"].as_u64();
     let output = usage["completion_tokens"].as_u64();
     let cached = usage["prompt_tokens_details"]["cached_tokens"]
         .as_u64()
         .or_else(|| usage["prompt_cache_hit_tokens"].as_u64());
-    let rate = match (input, cached) {
-        (Some(total), Some(hit)) if total > 0 => format!("{:.1}%", hit as f64 / total as f64 * 100.0),
-        (Some(0), Some(_)) => "0.0%".into(),
-        _ => "n/a".into(),
+    let cache = match cached {
+        Some(hit) if hit < 1_000 => hit.to_string(),
+        Some(hit) => match input {
+            Some(total) if total > 0 => format!("{:.1}%", hit as f64 / total as f64 * 100.0),
+            _ => "n/a".into(),
+        },
+        None => "n/a".into(),
     };
     format!(
-        "usage: input {} tokens, cache hit {}, output {} tokens",
-        input.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into()),
-        rate,
-        output.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into())
+        "↑ {} tokens({} cached) ↓ {} tokens",
+        input.map(format_tokens).unwrap_or_else(|| "n/a".into()),
+        cache,
+        output.map(format_tokens).unwrap_or_else(|| "n/a".into())
     )
 }
 
@@ -231,13 +244,44 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn compact_usage_units_and_cache_threshold() {
+        for (tokens, expected) in [
+            (0, "0"),
+            (999, "999"),
+            (1000, "1k"),
+            (1250, "1.25k"),
+            (999999, "1000k"),
+            (1000000, "1m"),
+            (1250000, "1.25m"),
+        ] {
+            assert_eq!(format_tokens(tokens), expected);
+        }
+        assert_eq!(
+            format_usage(&json!({"prompt_tokens":350,"completion_tokens":356,
+            "prompt_cache_hit_tokens":200})),
+            "↑ 350 tokens(200 cached) ↓ 356 tokens"
+        );
+        assert_eq!(
+            format_usage(&json!({"prompt_tokens":2000,"completion_tokens":1250000,
+            "prompt_cache_hit_tokens":999})),
+            "↑ 2k tokens(999 cached) ↓ 1.25m tokens"
+        );
+        assert_eq!(
+            format_usage(&json!({"prompt_tokens":2000,"completion_tokens":1000,
+            "prompt_tokens_details":{"cached_tokens":1000}})),
+            "↑ 2k tokens(50.0% cached) ↓ 1k tokens"
+        );
+        assert_eq!(format_usage(&Value::Null), "↑ n/a tokens(n/a cached) ↓ n/a tokens");
+    }
+
+    #[test]
     fn usage_and_reasoning_fields() {
         assert_eq!(
             format_usage(&json!({"prompt_tokens":100,"completion_tokens":20,
             "prompt_tokens_details":{"cached_tokens":25}})),
-            "usage: input 100 tokens, cache hit 25.0%, output 20 tokens"
+            "↑ 100 tokens(25 cached) ↓ 20 tokens"
         );
-        assert!(format_usage(&Value::Null).contains("cache hit n/a"));
+        assert!(format_usage(&Value::Null).contains("n/a cached"));
         assert_eq!(
             reasoning_text(&json!({"reasoning_content":"thinking"})),
             Some("thinking")

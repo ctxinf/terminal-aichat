@@ -21,17 +21,31 @@ impl ResponseRenderer {
     pub fn start_render(&self, config: RenderConfig) -> (Sender<RenderEvent>, tokio::task::JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(100);
         let task = tokio::spawn(async move {
+            let terminal = std::io::stdout().is_terminal();
             if !config.pure {
+                let mut fields = Vec::new();
                 if config.display.model {
-                    println!("model: {}", config.model_name);
+                    let label = if terminal {
+                        "model:".dark_cyan().to_string()
+                    } else {
+                        "model:".into()
+                    };
+                    fields.push(format!("{label} {}", config.model_name));
                 }
                 if config.display.prompt {
-                    println!("prompt: {}", config.prompt_config_name);
+                    let label = if terminal {
+                        "prompt:".dark_cyan().to_string()
+                    } else {
+                        "prompt:".into()
+                    };
+                    fields.push(format!("{label} {}", config.prompt_config_name));
+                }
+                if !fields.is_empty() {
+                    println!("{}", fields.join("   "));
                 }
             }
             let mut reasoning = false;
             let mut needs_newline = false;
-            let terminal = std::io::stdout().is_terminal();
             while let Some(event) = rx.recv().await {
                 match event {
                     RenderEvent::Content(text) => {

@@ -45,7 +45,7 @@
     "shell-exec-or-chat": { "system": INTEGRATION_PROMPT }
   },
   // "pure": false,
-  // "verbose": false,
+  // "logLevel": "INFO",
   "display": {
     // "usage": false,
     // "model": false,

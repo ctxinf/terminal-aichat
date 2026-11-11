@@ -84,9 +84,23 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     set_log_level(logger::LogLevel::parse(&runtime_config.log_level)?);
     log_debug!("Handling chat command");
     let input = get_chat_input(&cli).await?;
-    handle_chat_command(&runtime_config, &cli, input).await?;
-    if runtime_config.display.duration && !runtime_config.pure {
-        println!("\nduration: {:.2}s", started.elapsed().as_secs_f64());
+    let usage = handle_chat_command(&runtime_config, &cli, input).await?;
+    if !runtime_config.pure {
+        let mut footer = Vec::new();
+        if runtime_config.display.duration {
+            let duration = format!("{:.2}s", started.elapsed().as_secs_f64());
+            footer.push(if io::stdout().is_terminal() {
+                duration.dark_cyan().to_string()
+            } else {
+                duration
+            });
+        }
+        if runtime_config.display.usage {
+            footer.push(chat::format_usage(&usage));
+        }
+        if !footer.is_empty() {
+            println!("\n{}", footer.join("  "));
+        }
     }
 
     Ok(())
@@ -111,7 +125,7 @@ async fn handle_chat_command(
     runtime_config: &Config,
     cli: &Cli,
     input: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     // 找到要使用的 provider 和 model
     let (provider_key, provider, model): (&String, &ProviderConfig, &ModelConfig);
 
@@ -204,10 +218,10 @@ async fn handle_chat_command(
         &input.safe_substring(20)
     );
 
-    chat::completion(&input, provider, model, prompt_name, prompt_config, runtime_config).await?;
+    let usage = chat::completion(&input, provider, model, prompt_name, prompt_config, runtime_config).await?;
 
     log_debug!("Chat Done.");
-    Ok(())
+    Ok(usage)
 }
 
 /// Explicit provider/id wins; otherwise defaultProvider scopes bare IDs/names.
@@ -285,9 +299,6 @@ fn merge_config(file_config: &Config, cli: &Cli) -> Result<Config, String> {
     }
     if let Some(v) = cli.pure {
         config.pure = v;
-    }
-    if let Some(v) = cli.verbose {
-        config.verbose = v;
     }
     if let Some(v) = &cli.display {
         config.display = crate::config::DisplayConfig::parse(v)?;

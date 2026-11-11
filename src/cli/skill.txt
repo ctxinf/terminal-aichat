@@ -32,7 +32,6 @@ The default file is generated on first use. JSONC allows comments.
   "defaultThinkingLevel": "low",
   "display": {"usage": true, "model": true, "prompt": true, "reasoning": false, "duration": true},
   "pure": false,
-  "verbose": false,
   "logLevel": "INFO",
   "providers": {
     "gateway": {
@@ -85,13 +84,12 @@ Environment variables override explicit CLI values, which override config values
 | --display | TERMINAL_AICHT_DISPLAY |
 | --log-level | TERMINAL_AICHT_LOG_LEVEL |
 | --pure | TERMINAL_AICHT_PURE |
-| --verbose | TERMINAL_AICHT_VERBOSE |
 | --disable-stream | TERMINAL_AICHT_DISABLE_STREAM |
 | --init-integration | TERMINAL_AICHT_INIT_INTEGRATION |
 
 Boolean variables accept true/false or 1/0, case insensitive; CLI booleans also support `--pure=false`. Empty values fail except DISPLAY, where empty clears all options. Logging accepts ERROR, WARN, INFO, DEBUG, TRACE. Bare LOG_LEVEL is ignored. The program inherits process variables and never loads environment files.
 
-Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Usage shows API-reported input/output tokens and input cache hit percentage; unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
+Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Model and prompt share a line with colored labels on terminals. Duration and usage share a footer, e.g. 1.20s  ↑ 350 tokens(200 cached) ↓ 356 tokens. Token counts use k/m units from 1000/1000000; cached tokens below 1000 show a count, otherwise a percentage of input. Unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
 
 ## Shell integration
 
@@ -105,8 +103,10 @@ eval "$(aichat --init-integration bash)"
 aichat --init-integration fish | source
 ```
 
-The integration provides `?` and `?!` commands. Inspect generated shell commands before executing them. Avoid verbose/debug logging when consuming the answer as machine-readable text.
+The integration provides `?` and `?!` commands. Inspect generated shell commands before executing them. Avoid debug/trace logging when consuming the answer as machine-readable text.
 
 Model reasoning=false explicitly disables thinking: OpenRouter uses reasoning.enabled=false; DeepSeek endpoints/models use thinking.type=disabled without reasoning_effort; other OpenAI-compatible endpoints use reasoning_effort=none. API support varies; extraBody and removeBodyFields retain final precedence for custom endpoints or models that reject these fields. Display.reasoning controls only rendering. Terminal answers end with a newline; redirected/piped answers preserve exact bytes.
 
 Streaming is configured per model with `"stream": true|false` (default true). The top-level disableStream field has been removed. `--disable-stream` or TERMINAL_AICHT_DISABLE_STREAM=true disables streaming for this invocation; `--disable-stream=false` or the environment value false enables streaming even for a model with stream=false. Environment overrides CLI. extraBody and removeBodyFields still apply last to the outgoing request.
+
+DEBUG logs prompt template fields, commands and failures, including captured output and exit status. TRACE also logs rendered messages and successful command stdout.

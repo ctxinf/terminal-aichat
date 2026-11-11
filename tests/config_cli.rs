@@ -132,3 +132,46 @@ fn config_path_environment_wins_and_arguments_are_isolated() {
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("Provider 'unknown' not found"));
 }
+
+#[test]
+fn verbose_is_removed_from_cli_and_help() {
+    let f = Fixture::new();
+    assert!(!f.run(&["--verbose"]).status.success());
+    let help = f.run(&["--help"]);
+    let text = String::from_utf8_lossy(&help.stdout);
+    assert!(!text.contains("--verbose"));
+    assert!(text.contains("--log-level"));
+}
+
+#[cfg(unix)]
+#[test]
+fn debug_log_reports_prompt_command_failure() {
+    let f = Fixture::new();
+    let config = serde_json::json!({
+        "defaultProvider": "test", "defaultModel": "test", "defaultPrompt": "broken",
+        "providers": {"test": {
+            "baseUrl": "http://127.0.0.1:1/v1",
+            "apiKey": {"value": "test-key"},
+            "models": [{"id": "test"}]
+        }},
+        "prompts": {"broken": {"user": "{{ shell(\"printf diagnostic-output; exit 7\") }}"}}
+    });
+    fs::write(f.config(), serde_json::to_string(&config).unwrap()).unwrap();
+    for level in ["INFO", "DEBUG", "TRACE"] {
+        let result = f.run(&["--config", f.config().to_str().unwrap(), "--log-level", level, "hello"]);
+        assert!(!result.status.success());
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(text.contains("prompt command failed"), "{text}");
+        if level == "INFO" {
+            assert!(!text.contains("diagnostic-output"), "{text}");
+        } else {
+            assert!(text.contains("diagnostic-output"), "{text}");
+            assert!(text.contains("Prompt template field user failed"), "{text}");
+            assert!(text.contains("exit status: 7"), "{text}");
+        }
+    }
+}

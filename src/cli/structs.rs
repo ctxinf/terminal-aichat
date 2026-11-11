@@ -11,8 +11,8 @@ pub enum IntegrationShell {
 #[command(
     name = "aichat",
     version,
-    about = "A terminal AI/LLM chat tool. Use --skill for detailed agent documentation.
-Environment variables TERMINAL_AICHT_* override command-line values.",
+    about = "A terminal AI/LLM chat tool.",
+    help_template = "{name} {version}\n{about}\n\n{usage-heading} {usage}\n\n    \x1b[32maichat\x1b[0m \"how to view ubuntu release version\"  #aichat \"<INPUT MESSAGE>\"\n    \x1b[32maichat\x1b[0m how to view ubuntu release version    #aichat <INPUT MESSAGE>\n    \x1b[32maichat\x1b[0m -- how to use `ps` to view process   #aichat -- <INPUT MESSAGE>\n    cat input.txt | \x1b[32maichat\x1b[0m\n    cat input.txt | \x1b[32maichat\x1b[0m \"explain this\"\n\nOptions:\n{options}{after-help}\n",
     after_help = "Configuration commands: aichat config --help",
     arg_required_else_help = false,
     disable_help_flag = false,
@@ -26,10 +26,6 @@ pub struct Cli {
     /// Specify prompt configuration to use
     #[arg(short, long)]
     pub prompt: Option<String>,
-
-    /// Show verbose information
-    #[arg(long, num_args = 0..=1, default_missing_value = "true", require_equals = true)]
-    pub verbose: Option<bool>,
 
     /// Use pure output mode (no extra text and color rendering)
     #[arg(long, num_args = 0..=1, default_missing_value = "true", require_equals = true)]
@@ -92,7 +88,6 @@ impl Cli {
         }
         for (name, target) in [
             ("PURE", &mut self.pure),
-            ("VERBOSE", &mut self.verbose),
             ("DISABLE_STREAM", &mut self.disable_stream),
         ] {
             let key = format!("TERMINAL_AICHT_{name}");

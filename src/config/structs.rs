@@ -126,7 +126,6 @@ pub struct Config {
     pub default_prompt: Option<String>,
     pub default_thinking_level: String,
     pub pure: bool,
-    pub verbose: bool,
     pub display: DisplayConfig,
     pub log_level: String,
 }
@@ -141,7 +140,6 @@ impl Default for Config {
             default_prompt: None,
             default_thinking_level: low(),
             pure: false,
-            verbose: false,
             display: DisplayConfig::default(),
             log_level: "INFO".into(),
         }

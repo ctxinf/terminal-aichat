@@ -287,11 +287,13 @@ export TERMINAL_AICHT_LOG_LEVEL=DEBUG
 aichat --pure "Hello?"
 ```
 
-### Verbose Logging (`--verbose`)
+### Detailed Logging (`--log-level`)
 
 ```sh
-aichat --verbose "Hello?"
+aichat --log-level DEBUG "Hello?"
 ```
+
+DEBUG reports template fields, shell commands and failure details (including exit status and captured output). TRACE also shows rendered messages and successful command stdout. Replace the removed `--verbose` / `TERMINAL_AICHT_VERBOSE` / `verbose` config field with `--log-level` / `TERMINAL_AICHT_LOG_LEVEL` / `logLevel`.
 
 ### Disable Streaming Mode (`--disable-stream`)
 

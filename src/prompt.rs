@@ -14,14 +14,23 @@ pub async fn render(prompt: &PromptConfig, input: &str) -> Result<Value> {
     }
     // Legacy content remains literal, preserving existing prompts containing braces.
     let system = match &prompt.system {
-        Some(template) => render_template(template, input).await?,
+        Some(template) => render_field("system", template, input).await?,
         None => prompt.content.clone(),
     };
     let user = match &prompt.user {
-        Some(template) => render_template(template, input).await?,
+        Some(template) => render_field("user", template, input).await?,
         None => input.to_owned(),
     };
     Ok(json!([{"role":"system", "content":system}, {"role":"user", "content":user}]))
+}
+
+async fn render_field(field: &str, template: &str, input: &str) -> Result<String> {
+    crate::log_debug!("Rendering prompt template field: {field}");
+    let result = render_template(template, input).await;
+    if let Err(error) = &result {
+        crate::log_debug!("Prompt template field {field} failed: {error}");
+    }
+    result
 }
 
 async fn render_template(template: &str, input: &str) -> Result<String> {
@@ -263,6 +272,16 @@ fn check_shell(command: &str) -> Result<()> {
 }
 
 async fn run_shell(command: &str, duration: Duration) -> Result<String> {
+    crate::log_debug!("Running prompt template command: {command:?}");
+    let result = run_shell_inner(command, duration).await;
+    match &result {
+        Ok(output) => crate::log_trace!("Prompt template command stdout: {output:?}"),
+        Err(error) => crate::log_debug!("Prompt template command {command:?} failed: {error}"),
+    }
+    result
+}
+
+async fn run_shell_inner(command: &str, duration: Duration) -> Result<String> {
     check_shell(command)?;
     #[cfg(unix)]
     let mut process = {
@@ -282,7 +301,7 @@ async fn run_shell(command: &str, duration: Duration) -> Result<String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| "prompt command failed to start")?;
+        .map_err(|error| format!("prompt command failed to start: {error}"))?;
     #[cfg(unix)]
     let _group = ProcessGroup(child.id().ok_or("prompt command has no process ID")?);
     let stdout = child.stdout.take().ok_or("missing command stdout")?;
@@ -298,6 +317,11 @@ async fn run_shell(command: &str, duration: Duration) -> Result<String> {
         return Err("prompt command output exceeds 64 KiB".into());
     }
     if !status.success() {
+        crate::log_debug!(
+            "Prompt template command stdout: {:?}; stderr: {:?}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
         return Err(format!(
             "prompt command failed ({status}): {}",
             String::from_utf8_lossy(&stderr).trim_end()

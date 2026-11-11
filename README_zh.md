@@ -272,10 +272,12 @@ export TERMINAL_AICHT_LOG_LEVEL=DEBUG
 ```sh
 aichat --pure "Hello?"
 ```
-#### 显示详细日志 (`--verbose`)
+#### 显示详细日志 (`--log-level`)
 ```sh
-aichat --verbose "Hello?"
+aichat --log-level DEBUG "Hello?"
 ```
+
+DEBUG 显示模板字段、shell 命令及失败详情（退出状态和捕获的输出）；TRACE 还会显示渲染后的消息和成功命令的 stdout。原 `--verbose` / `TERMINAL_AICHT_VERBOSE` / `verbose` 配置项请改用 `--log-level` / `TERMINAL_AICHT_LOG_LEVEL` / `logLevel`。
 #### 不使用stream方式调用api (`--disable-stream`)
 ```sh
 aichat --disable-stream "Hello?"
