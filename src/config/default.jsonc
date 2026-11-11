@@ -1,0 +1,57 @@
+{
+  // Select models by ID, or provider/model-id. A provider scopes bare IDs.
+  // "defaultProvider": "my-gateway",
+  // "defaultModel": "deepseek-flash",
+  "defaultPrompt": "sample_prompt",
+  // "defaultThinkingLevel": "low", // Arbitrary reasoning_effort string; default low.
+  // "disableStream": false,
+  // "pure": false,
+  // "verbose": false,
+  "providers": {
+    /*
+    "my-gateway": {
+      "baseUrl": "https://gateway.example.com/v1",
+      "apiKey": "$MY_GATEWAY_API_KEY",
+      // Omit apiKey for local services; alternatively "auth": { "type": "none" }.
+      // "name": "My gateway", // Defaults to provider key.
+      // "api": "openai-completions", // Only supported API; default.
+      // "headers": { "X-Organization": "my-team", "X-Token": "${GATEWAY_TOKEN}" },
+      // Header values accept $NAME, ${NAME}, or !command (trusted config only).
+      // Commands run on request, time out after 10s, and cache successes in process.
+      // "queryParams": { "region": "sg" },
+      // "timeoutMs": 120000, // Positive request timeout, includes streaming.
+      // "maxRetries": 2, // Retries transport failures, 429 and 5xx before streaming.
+      // "extraBody": { "temperature": 0.7 }, // Arbitrary request fields.
+      "models": [
+        {
+          "id": "deepseek-flash",
+          // "name": "DeepSeek Flash", // Defaults to id.
+          // "reasoning": true, // Default true; false omits reasoning_effort.
+          // "thinkingLevel": "low", // Overrides defaultThinkingLevel.
+          // "headers": { "X-Model-Route": "fast" }, // Overrides provider headers.
+          // "extraBody": { "temperature": 0.5 }, // Overrides provider fields.
+          // "removeBodyFields": ["store"] // Removed last, top-level fields only.
+        }
+      ]
+    }
+    */
+  },
+  "auth": {
+    /*
+    "gateway-account": {
+      "key": "MY_GATEWAY_API_KEY",
+      // Environment overrides value; unset environment falls back to value.
+      // "value": "your-key", // Literal; never interpolated or executed.
+      // "encryption": "generated-passphrase" // value must then be v1 ciphertext.
+      // v1: AES-256-GCM + Argon2id; password and ciphertext share this file.
+    }
+    */
+  },
+  "prompts": {
+    "sample_prompt": {
+      "content": "You are a terminal assistant. Give concise responses in plain text."
+    },
+    "concise": { "content": "Use plain text, give extremely concise output" },
+    "shell-exec-or-chat": { "content": INTEGRATION_PROMPT }
+  }
+}

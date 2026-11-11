@@ -4,3 +4,8 @@ mod structs;
 pub use display::*;
 pub use manager::*;
 pub use structs::*;
+
+mod auth;
+mod headers;
+pub use auth::resolve_auth;
+pub use headers::resolve_header;

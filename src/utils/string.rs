@@ -19,27 +19,6 @@ impl StringUtilsTrait for str {
     }
 }
 
-pub struct StringUtils;
-impl StringUtils {
-    pub fn mask_sensitive(str: &String) -> String {
-        let len = str.len();
-
-        match len {
-            0 => String::new(),
-            1 => String::from("*"),
-            1..=4 => format!("{}{}", &str[0..1], "*".repeat(len - 1)), // 长度0-4直接返回原字符串
-            5..=10 => {
-                // 长度5-10，保留首尾各2个字符
-                format!("{}****{}", &str[0..2], &str[len - 2..])
-            }
-            _ => {
-                // 长度10+，保留首尾各4个字符
-                format!("{}****{}", &str[0..4], &str[len - 4..])
-            }
-        }
-    }
-}
-
 impl StringUtilsTrait for String {
     fn safe_substring(&self, max_chars: usize) -> &str {
         self.as_str().safe_substring(max_chars)

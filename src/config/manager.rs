@@ -41,7 +41,10 @@ impl ConfigManager {
             }
         };
 
-        Ok(Self { config_path, is_default_path })
+        Ok(Self {
+            config_path,
+            is_default_path,
+        })
     }
 
     /// 是否使用默认配置路径
@@ -58,12 +61,18 @@ impl ConfigManager {
         let content = fs::read_to_string(&self.config_path)?;
 
         // 使用 serde_json_lenient 解析（支持 JSONC 注释）
-        let config: Config = serde_json_lenient::from_str(&content)
+        let mut deserializer = serde_json_lenient::Deserializer::from_str(&content);
+        let config: Config = serde_path_to_error::deserialize(&mut deserializer)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        deserializer
+            .end()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        config
+            .validate()
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         Ok(config)
     }
-
 
     /// 保存默认配置（带注释）到文件
     pub fn save_default_with_comments(&self) -> io::Result<()> {

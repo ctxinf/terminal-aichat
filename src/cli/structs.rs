@@ -10,7 +10,7 @@ pub enum IntegrationShell {
 #[derive(Parser)]
 #[command(
     name = "aichat",
-    version = "1.1.1",
+    version,
     about = r#"
 A terminal AI/LLM chat tool
 
@@ -37,7 +37,7 @@ pub struct Cli {
     #[arg(long, short)]
     pub list: bool,
 
-    /// Specify model selector to use (model key; optionally provider/model_key)
+    /// Specify model selector to use (model ID; optionally provider/model-id)
     #[arg(short, long)]
     pub model: Option<String>,
 

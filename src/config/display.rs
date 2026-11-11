@@ -12,6 +12,10 @@ pub fn print_config_location(config_path: &Path) {
 pub fn print_providers(config: &Config) -> io::Result<()> {
     println!("Providers & Models:");
 
+    if let Some(provider) = &config.default_provider {
+        println!("Default provider: {}", provider);
+    }
+
     // 显示默认配置
     if let Some(default_model) = &config.default_model {
         println!("Default model: {}", default_model);
@@ -28,22 +32,28 @@ pub fn print_providers(config: &Config) -> io::Result<()> {
         println!("  Base URL: {}", provider.base_url);
 
         // 打印 API key 状态
-        let api_key_status = if provider.api_key.is_some() { "set" } else { "not set" };
-        println!("  API Key: {}", api_key_status);
+        println!(
+            "  API Key: {}",
+            if provider.api_key.is_some() {
+                "configured"
+            } else {
+                "none"
+            }
+        );
 
         // 打印 models
         println!("  Models:");
-        for (model_key, model) in &provider.models {
-            let model_name = model.get_name(model_key);
-            let is_default_model = config.default_model.as_ref() == Some(model_key)
-                || config.default_model.as_ref() == Some(&model_name);
-
-            let default_mark = if is_default_model { " *" } else { "" };
-            print!("    - {}", model_name);
-            if let Some(temp) = model.temperature {
-                print!(" [temperature: {}]", temp);
-            }
-            println!("{}", default_mark);
+        for model in &provider.models {
+            let selector = format!("{}/{}", provider_key, model.id);
+            let is_default_model = config.default_model.as_deref() == Some(&selector)
+                || (config.default_model.as_deref() == Some(&model.id)
+                    && config.default_provider.as_deref().is_none_or(|p| p == provider_key));
+            println!(
+                "    - {} ({}){}",
+                model.get_name(),
+                selector,
+                if is_default_model { " *" } else { "" }
+            );
         }
     }
 
