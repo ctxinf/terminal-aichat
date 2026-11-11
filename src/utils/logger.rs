@@ -38,14 +38,14 @@ impl LogLevel {
         }
     }
 
-    fn from_env() -> Self {
-        match std::env::var("LOG_LEVEL").unwrap_or_default().to_uppercase().as_str() {
-            "ERROR" => LogLevel::Error,
-            "WARN" => LogLevel::Warn,
-            "INFO" => LogLevel::Info,
-            "DEBUG" => LogLevel::Debug,
-            "TRACE" => LogLevel::Trace,
-            _ => LogLevel::Info, // 默认级别
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value.to_ascii_uppercase().as_str() {
+            "ERROR" => Ok(Self::Error),
+            "WARN" => Ok(Self::Warn),
+            "INFO" => Ok(Self::Info),
+            "DEBUG" => Ok(Self::Debug),
+            "TRACE" => Ok(Self::Trace),
+            _ => Err("log-level: expected ERROR, WARN, INFO, DEBUG or TRACE".into()),
         }
     }
 }
@@ -53,7 +53,7 @@ impl LogLevel {
 static CURRENT_LEVEL: AtomicU8 = AtomicU8::new(LogLevel::Info as u8);
 
 pub fn init_logger() {
-    let level = LogLevel::from_env();
+    let level = LogLevel::Info;
     CURRENT_LEVEL.store(level as u8, Ordering::Relaxed);
 }
 

@@ -75,7 +75,10 @@ pub fn print_prompts(config: &Config) {
         };
 
         println!("\n{}{}:", name, default_text);
-        println!("System:\n```\n{}\n```", prompt.system.as_deref().unwrap_or(&prompt.content));
+        println!(
+            "System:\n```\n{}\n```",
+            prompt.system.as_deref().unwrap_or(&prompt.content)
+        );
         println!("User:\n```\n{}\n```", prompt.user.as_deref().unwrap_or("{{ input }}"));
     }
 }

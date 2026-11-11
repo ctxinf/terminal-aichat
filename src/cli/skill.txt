@@ -1,0 +1,112 @@
+# terminal-aichat agent usage
+
+`aichat` sends a single message to an OpenAI-compatible chat/completions API.
+
+## Invocation
+
+- `aichat "question"`: chat with the default model and prompt.
+- `aichat --model provider/model-id --prompt concise "question"`: select a model and prompt.
+- `printf 'context' | aichat "question"`: append stdin to the message.
+- `aichat --pure --disable-stream "question"`: answer text only, no streaming.
+- `aichat config show`: list configured models, prompts and config path.
+- `aichat config init`: create the default config and exit; warn without overwriting if it exists. Combine with `aichat config --config PATH init` or TERMINAL_AICHT_CONFIG to choose the path; missing parent directories are created.
+- `aichat --config ./config.jsonc "question"`: select a JSON/JSONC config.
+- `aichat --display=usage,model,prompt,reasoning,duration "question"`: select additional output.
+- `aichat --display= "question"`: clear display options (the default).
+- `aichat --log-level DEBUG "question"`: enable diagnostics.
+- `aichat --skill`: print this documentation without loading configuration.
+
+Without a message, interactive input is used. `--help` and `--version` exit without loading configuration or executing integration setup.
+
+## Configuration
+
+The default path is the OS config directory under `terminal-aichat/config.jsonc`
+(Linux: `~/.config/terminal-aichat/config.jsonc`; macOS: `~/Library/Application Support/terminal-aichat/config.jsonc`; Windows: `%APPDATA%/terminal-aichat/config.jsonc`).
+The default file is generated on first use. JSONC allows comments.
+
+```json
+{
+  "defaultProvider": "gateway",
+  "defaultModel": "fast",
+  "defaultPrompt": "concise",
+  "defaultThinkingLevel": "low",
+  "display": {"usage": true, "model": true, "prompt": true, "reasoning": false, "duration": true},
+  "pure": false,
+  "verbose": false,
+  "logLevel": "INFO",
+  "providers": {
+    "gateway": {
+      "baseUrl": "https://gateway.example.com/v1",
+      "apiKey": {"value": "your-key"},
+      "models": [{"id": "fast", "name": "Fast", "stream": true, "reasoning": true}]
+    }
+  },
+  "prompts": {"concise": {"system": "Answer concisely.", "user": "{{ input }}"}}
+}
+```
+
+A model selector can be an ID, display name, or `provider/model-id`. `defaultProvider` scopes bare selectors; ambiguous matches fail.
+Provider options: `name`, `api` (`openai-completions`), `headers`, `queryParams`, `timeoutMs` (120000), `maxRetries` (2), `extraBody`.
+Model options: `id`, `name`, `stream` (true), `reasoning` (true), `thinkingLevel`, `headers`, `extraBody`, `removeBodyFields`.
+Model headers and extra body override provider values; removeBodyFields removes top-level request fields last.
+
+Credentials live directly in each provider: `"apiKey": {"value": "your-key"}` for plaintext (encryption omitted or empty), or `"apiKey": {"value": "v1:...", "encryption": "generated-passphrase"}` for encrypted storage. No top-level auth map or credential key matching exists. Values are literal: no variable expansion or command execution, and no implicit OPENAI_API_KEY lookup. Omit apiKey for unauthenticated providers.
+
+`aichat config login --provider openrouter` asks for a hidden API key and confirmation, encrypts it with AES-256-GCM + Argon2id using random salt, nonce and passphrase, and saves it only after confirmation matches. This updates only the selected provider's apiKey while preserving comments. The encryption passphrase is stored alongside ciphertext, so anyone able to read the config can decrypt it; Unix login saves with mode 0600. Login reads the controlling terminal, never piped stdin, and refuses to run without a terminal. Cancelling or mismatched input leaves the file unchanged. Unknown providers must be added to config first.
+
+Headers accept literals, environment references and `!command` (trusted config only).
+Prompts support `system`, `user`, legacy `content`, and templates `{{ input }}`, `{{ cwd }}`, `{{ env("LANG") }}`, `{{ shell("command") }}`. Shell templates execute commands; use only trusted configuration.
+
+## Configuration subcommands
+
+```sh
+aichat config init
+aichat config show
+aichat config provider list
+aichat config model list
+aichat config login --provider openrouter
+aichat config --config ./custom.jsonc init
+aichat config login --provider openrouter --config ./custom.jsonc
+```
+
+Only a leading `config` enters configuration mode. Subcommands have their own arguments: put `--config` after `config`; root chat flags such as `--model` or `--display` are rejected in config mode. `TERMINAL_AICHT_CONFIG` applies to both modes; `TERMINAL_AICHT_PROVIDER` overrides login's provider. Chat-only environment variables do not affect config commands. Config commands never read stdin and show/list never print credential values or encryption passphrases.
+
+To chat about the word config: `aichat "config explanation"`, `aichat -- config`, or pipe it via `printf 'config' | aichat`. Existing positional messages and piped context retain their order. The old --init-config, --list-configs and -l actions have been removed.
+
+## Environment precedence
+
+Environment variables override explicit CLI values, which override config values, which override defaults. The prefix spelling is exactly `TERMINAL_AICHT_`.
+
+| CLI | Environment |
+| --- | --- |
+| --config | TERMINAL_AICHT_CONFIG |
+| --model | TERMINAL_AICHT_MODEL |
+| --prompt | TERMINAL_AICHT_PROMPT |
+| --display | TERMINAL_AICHT_DISPLAY |
+| --log-level | TERMINAL_AICHT_LOG_LEVEL |
+| --pure | TERMINAL_AICHT_PURE |
+| --verbose | TERMINAL_AICHT_VERBOSE |
+| --disable-stream | TERMINAL_AICHT_DISABLE_STREAM |
+| --init-integration | TERMINAL_AICHT_INIT_INTEGRATION |
+
+Boolean variables accept true/false or 1/0, case insensitive; CLI booleans also support `--pure=false`. Empty values fail except DISPLAY, where empty clears all options. Logging accepts ERROR, WARN, INFO, DEBUG, TRACE. Bare LOG_LEVEL is ignored. The program inherits process variables and never loads environment files.
+
+Display defaults to empty. CLI/environment display lists replace the config display object. Pure mode suppresses all display items. Usage shows API-reported input/output tokens and input cache hit percentage; unsupported metrics show n/a. Reasoning shows API-provided reasoning_content/reasoning in muted italic text on terminals. Duration measures elapsed execution time through output completion.
+
+## Shell integration
+
+`aichat --init-integration zsh` prints a script and installs an editable `shell-exec-or-chat` prompt in the selected config. Shell choices: bash, zsh, fish. `--prompt NAME` selects the installed prompt. Setting TERMINAL_AICHT_INIT_INTEGRATION also triggers this action.
+
+```sh
+# Add the appropriate line to your shell configuration:
+eval "$(aichat --init-integration zsh)"
+eval "$(aichat --init-integration bash)"
+# fish:
+aichat --init-integration fish | source
+```
+
+The integration provides `?` and `?!` commands. Inspect generated shell commands before executing them. Avoid verbose/debug logging when consuming the answer as machine-readable text.
+
+Model reasoning=false explicitly disables thinking: OpenRouter uses reasoning.enabled=false; DeepSeek endpoints/models use thinking.type=disabled without reasoning_effort; other OpenAI-compatible endpoints use reasoning_effort=none. API support varies; extraBody and removeBodyFields retain final precedence for custom endpoints or models that reject these fields. Display.reasoning controls only rendering. Terminal answers end with a newline; redirected/piped answers preserve exact bytes.
+
+Streaming is configured per model with `"stream": true|false` (default true). The top-level disableStream field has been removed. `--disable-stream` or TERMINAL_AICHT_DISABLE_STREAM=true disables streaming for this invocation; `--disable-stream=false` or the environment value false enables streaming even for a model with stream=false. Environment overrides CLI. extraBody and removeBodyFields still apply last to the outgoing request.

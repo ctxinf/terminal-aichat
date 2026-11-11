@@ -1,51 +1,8 @@
 //! Helpers for `aichat --init-integration <SHELL> [--prompt <NAME>]`:
-//! argv pre-parsing and config-file patching.
+//! Config-file patching.
 
 use super::SHELL_INTEGRATION_PROMPT;
-use crate::cli::structs::IntegrationShell;
 use crate::config::{Config, ConfigManager, PromptConfig};
-
-/// Lightweight pre-parse for `--init-integration <SHELL>`. Returns Some(shell)
-/// when present (and the value is recognized) so we can short-circuit the
-/// full clap parse plus chat plumbing.
-pub fn parse_init_integration_arg(args: &[String]) -> Option<IntegrationShell> {
-    let mut iter = args.iter().skip(1);
-    while let Some(arg) = iter.next() {
-        let value: Option<&str> = if let Some(v) = arg.strip_prefix("--init-integration=") {
-            Some(v)
-        } else if arg == "--init-integration" {
-            iter.next().map(|s| s.as_str())
-        } else {
-            None
-        };
-        if let Some(v) = value {
-            return match v.to_ascii_lowercase().as_str() {
-                "bash" => Some(IntegrationShell::Bash),
-                "zsh" => Some(IntegrationShell::Zsh),
-                "fish" => Some(IntegrationShell::Fish),
-                _ => None,
-            };
-        }
-    }
-    None
-}
-
-/// Pre-parse `--prompt <NAME>` / `-p <NAME>` for the init-integration fast path.
-pub fn parse_prompt_arg(args: &[String]) -> Option<String> {
-    let mut iter = args.iter().skip(1);
-    while let Some(arg) = iter.next() {
-        if let Some(v) = arg.strip_prefix("--prompt=") {
-            return Some(v.to_string());
-        }
-        if let Some(v) = arg.strip_prefix("-p=") {
-            return Some(v.to_string());
-        }
-        if arg == "--prompt" || arg == "-p" {
-            return iter.next().cloned();
-        }
-    }
-    None
-}
 
 /// Make sure the named integration prompt exists in the user's config file.
 ///
@@ -96,10 +53,7 @@ pub fn ensure_integration_prompt(
 /// Insert a `prompts.<name>` entry into a JSONC config string, preserving
 /// the rest of the file. Falls back to a serde round-trip (which strips
 /// comments) if textual insertion is not possible.
-fn insert_prompt_into_jsonc(
-    source: &str,
-    prompt_name: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn insert_prompt_into_jsonc(source: &str, prompt_name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let entry = format!(
         "    \"{name}\": {{\n      \"system\": {json}\n    }}",
         name = prompt_name,
@@ -125,11 +79,12 @@ fn insert_prompt_into_jsonc(
                             let head = &source[..i];
                             let tail = &source[i..];
                             let trimmed_head = head.trim_end();
-                            let needs_comma =
-                                !trimmed_head.ends_with('{') && !trimmed_head.ends_with(',');
+                            let needs_comma = !trimmed_head.ends_with('{') && !trimmed_head.ends_with(',');
                             let mut out = String::with_capacity(source.len() + entry.len() + 8);
                             out.push_str(trimmed_head);
-                            if needs_comma { out.push(','); }
+                            if needs_comma {
+                                out.push(',');
+                            }
                             out.push('\n');
                             out.push_str(&entry);
                             out.push('\n');
@@ -143,8 +98,13 @@ fn insert_prompt_into_jsonc(
                         i += 1;
                         while i < bytes.len() {
                             let ch = bytes[i] as char;
-                            if ch == '\\' { i += 2; continue; }
-                            if ch == '"' { break; }
+                            if ch == '\\' {
+                                i += 2;
+                                continue;
+                            }
+                            if ch == '"' {
+                                break;
+                            }
                             i += 1;
                         }
                     }
@@ -152,12 +112,12 @@ fn insert_prompt_into_jsonc(
                         let next = bytes[i + 1] as char;
                         if next == '/' {
                             i += 2;
-                            while i < bytes.len() && bytes[i] as char != '\n' { i += 1; }
+                            while i < bytes.len() && bytes[i] as char != '\n' {
+                                i += 1;
+                            }
                         } else if next == '*' {
                             i += 2;
-                            while i + 1 < bytes.len()
-                                && !(bytes[i] as char == '*' && bytes[i + 1] as char == '/')
-                            {
+                            while i + 1 < bytes.len() && !(bytes[i] as char == '*' && bytes[i + 1] as char == '/') {
                                 i += 1;
                             }
                             i += 1; // step to '/'
@@ -174,7 +134,10 @@ fn insert_prompt_into_jsonc(
     let mut config: Config = serde_json_lenient::from_str(source)?;
     config.prompts.insert(
         prompt_name.to_string(),
-        PromptConfig { system: Some(SHELL_INTEGRATION_PROMPT.to_string()), ..Default::default() },
+        PromptConfig {
+            system: Some(SHELL_INTEGRATION_PROMPT.to_string()),
+            ..Default::default()
+        },
     );
     Ok(serde_json::to_string_pretty(&config)?)
 }

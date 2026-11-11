@@ -79,6 +79,62 @@ impl ConfigManager {
         fs::write(&self.config_path, Config::default_config_with_comments())
     }
 
+    /// Atomically create a default configuration; return false if it already exists.
+    pub fn init_default(&self) -> io::Result<bool> {
+        use std::io::Write;
+        if let Some(parent) = self.config_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.config_path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        file.write_all(Config::default_config_with_comments().as_bytes())?;
+        Ok(true)
+    }
+
+    /// Save only the selected provider credential, preserving JSONC comments.
+    pub fn save_api_key(&self, provider: &str, key: &super::ApiKeyConfig) -> io::Result<()> {
+        use std::io::Write;
+        let original = fs::read_to_string(&self.config_path)?;
+        let updated = super::edit::replace_api_key(&original, provider, key).map_err(io::Error::other)?;
+        let config: Config =
+            serde_json_lenient::from_str(&updated).map_err(|_| io::Error::other("Updated config is invalid"))?;
+        config.validate().map_err(io::Error::other)?;
+        let parent = self
+            .config_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let temporary = parent.join(format!(".aichat-login-{}.tmp", std::process::id()));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        let result = (|| {
+            file.write_all(updated.as_bytes())?;
+            file.sync_all()?;
+            drop(file);
+            if fs::read_to_string(&self.config_path)? != original {
+                return Err(io::Error::other("Config changed during login; retry"));
+            }
+            fs::rename(&temporary, &self.config_path)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result
+    }
+
     /// 配置文件是否存在
     pub fn exists(&self) -> bool {
         self.config_path.exists()

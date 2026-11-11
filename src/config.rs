@@ -7,5 +7,6 @@ pub use structs::*;
 
 mod auth;
 mod headers;
-pub use auth::resolve_auth;
+pub use auth::{encrypt_api_key, resolve_api_key};
 pub use headers::resolve_header;
+mod edit;

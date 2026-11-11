@@ -4,9 +4,7 @@ use std::process::exit;
 use crate::cli::interactive::interactive_input;
 use crate::cli::structs::Cli;
 
-use crate::config::{
-    Config, ConfigManager, ModelConfig, ProviderConfig, print_config_location, print_prompts, print_providers,
-};
+use crate::config::{Config, ConfigManager, ModelConfig, ProviderConfig, print_config_location};
 use crate::integrations;
 use crate::utils::StringUtilsTrait;
 use crate::utils::logger::set_log_level;
@@ -36,59 +34,43 @@ enum ModelLookupError {
 }
 
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let orig_args: Vec<String> = std::env::args().collect();
-
-    // First, get config path set up (we need it for help display)
-    let config_dir = ConfigManager::get_config_dir()?;
-
-    // Check for --config flag early to get the right config path
-    let custom_config_path = orig_args.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone());
-
-    let config_manager = ConfigManager::new(&config_dir, custom_config_path.as_deref())?;
-    let config_path = config_manager.get_config_path().to_path_buf();
-
-    // Fast path: `--init-integration <SHELL>` — write the prompt to the
-    // user's config (transparent, editable) and emit the shell script.
-    if let Some(shell) = integrations::init::parse_init_integration_arg(&orig_args) {
-        let prompt_name = integrations::init::parse_prompt_arg(&orig_args)
-            .unwrap_or_else(|| integrations::DEFAULT_INTEGRATION_PROMPT_NAME.to_string());
-        integrations::init::ensure_integration_prompt(&config_manager, &prompt_name)?;
-        print!("{}", integrations::render_script(shell, &prompt_name));
+    let started = std::time::Instant::now();
+    // Only a leading `config` selects configuration mode. Chat text and stdin
+    // otherwise continue through the original parser unchanged.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("config")) {
+        return super::config_command::run();
+    }
+    let mut cli = Cli::parse();
+    if cli.skill {
+        print!("{}", include_str!("skill.txt"));
         return Ok(());
     }
-
-    // Check for no-args case first (orig_args includes program name)
-    if orig_args.len() == 1 {
-        // Print help manually
+    cli.apply_environment()?;
+    let config_dir = ConfigManager::get_config_dir()?;
+    let config_manager = ConfigManager::new(&config_dir, cli.config.as_deref())?;
+    let config_path = config_manager.get_config_path().to_path_buf();
+    if let Some(shell) = cli.init_integration {
+        let prompt_name = cli
+            .prompt
+            .as_deref()
+            .unwrap_or(integrations::DEFAULT_INTEGRATION_PROMPT_NAME);
+        integrations::init::ensure_integration_prompt(&config_manager, prompt_name)?;
+        print!("{}", integrations::render_script(shell, prompt_name));
+        return Ok(());
+    }
+    if std::env::args_os().len() == 1 && io::stdin().is_terminal() {
         Cli::command().print_help()?;
         println!();
         print_config_location(&config_path);
-        std::process::exit(0);
+        return Ok(());
     }
-
-    // Now handle pipe input
-    let mut custom_args = orig_args.clone();
-    let has_pipe_input = !io::stdin().is_terminal();
-    if has_pipe_input {
-        //if has pipe stdin
+    if !io::stdin().is_terminal() {
         let mut input = String::new();
-        io::stdin().read_to_string(&mut input).unwrap_or_default();
-        custom_args.push(input.trim().to_string());
-    }
-
-    // Use try_parse_from so we can handle help ourselves
-    let cli = match Cli::try_parse_from(&custom_args) {
-        Ok(cli) => cli,
-        Err(e) => {
-            // Print the clap error/help
-            e.print()?;
-            // Then print our config location
-            println!();
-            print_config_location(&config_path);
-            std::process::exit(e.exit_code());
+        io::stdin().read_to_string(&mut input)?;
+        if !input.trim().is_empty() {
+            cli.input.push(input.trim().to_owned());
         }
-    };
-
+    }
     let file_config = config_manager.load()?;
 
     // 如果配置文件不存在且使用默认路径，初始化默认配置（带注释）
@@ -97,19 +79,14 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 合并 CLI 和文件配置
-    let runtime_config = merge_config(&file_config, &cli);
+    let runtime_config = merge_config(&file_config, &cli)?;
 
-    if runtime_config.verbose {
-        set_log_level(logger::LogLevel::Trace);
-    }
-
-    // Handle commands
-    if cli.list {
-        handle_list_command(&file_config, &config_path).await?;
-    } else {
-        log_debug!("Handling chat command");
-        let input = get_chat_input(&cli).await?;
-        handle_chat_command(&runtime_config, &cli, input).await?;
+    set_log_level(logger::LogLevel::parse(&runtime_config.log_level)?);
+    log_debug!("Handling chat command");
+    let input = get_chat_input(&cli).await?;
+    handle_chat_command(&runtime_config, &cli, input).await?;
+    if runtime_config.display.duration && !runtime_config.pure {
+        println!("\nduration: {:.2}s", started.elapsed().as_secs_f64());
     }
 
     Ok(())
@@ -130,18 +107,6 @@ async fn get_chat_input(cli: &Cli) -> Result<String, Box<dyn std::error::Error>>
     Ok(input)
 }
 
-async fn handle_list_command(
-    file_config: &Config,
-    config_path: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    print_providers(file_config)?;
-    print_prompts(file_config);
-    println!();
-    print_config_location(config_path);
-
-    Ok(())
-}
-
 async fn handle_chat_command(
     runtime_config: &Config,
     cli: &Cli,
@@ -157,7 +122,7 @@ async fn handle_chat_command(
         .ok_or_else(|| {
             let hint = format!(
                 "Edit config file or set defaultModel. Use {} to see config location.",
-                " -l".dark_green()
+                " config show".dark_green()
             );
             eprintln!("❌ No model specified, please:\n{}", hint);
             exit(78);
@@ -172,7 +137,7 @@ async fn handle_chat_command(
                     eprintln!(
                         "❌ Model '{}' not found in config. Use {} to list available models.",
                         selector,
-                        "aichat -l".dark_green()
+                        "aichat config show".dark_green()
                     );
                 }
                 ModelLookupError::ProviderScopedNotFound {
@@ -185,7 +150,7 @@ async fn handle_chat_command(
                         model_id,
                         provider_key,
                         selector,
-                        "aichat -l".dark_green()
+                        "aichat config show".dark_green()
                     );
                 }
                 ModelLookupError::AmbiguousKey { model_id, providers } => {
@@ -194,7 +159,7 @@ async fn handle_chat_command(
                         model_id,
                         providers.join(", "),
                         model_id,
-                        "aichat -l".dark_green()
+                        "aichat config show".dark_green()
                     );
                 }
                 ModelLookupError::AmbiguousName { model_name, matches } => {
@@ -202,7 +167,7 @@ async fn handle_chat_command(
                         "❌ Model name '{}' matches multiple models: {}.\nTip: Use '<provider>/<model_id>' (from the list) to select one. Use {} to list models.",
                         model_name,
                         matches.join(", "),
-                        "aichat -l".dark_green()
+                        "aichat config show".dark_green()
                     );
                 }
             }
@@ -220,7 +185,7 @@ async fn handle_chat_command(
     let prompt_name = runtime_config.default_prompt.as_ref().ok_or_else(|| {
         let hint = format!(
             "Edit config file or set defaultPrompt. Use {} to see config location.",
-            " -l".dark_green()
+            " config show".dark_green()
         );
         eprintln!("❌ No prompt config specified, please:\n{}", hint);
         exit(78);
@@ -307,13 +272,30 @@ fn find_model_by_selector(config: &Config, selector: &str) -> Result<(String, St
 }
 
 /// 合并 CLI 参数和文件配置
-fn merge_config(file_config: &Config, cli: &Cli) -> Config {
+fn merge_config(file_config: &Config, cli: &Cli) -> Result<Config, String> {
     let mut config = file_config.clone();
     config.default_prompt = cli.prompt.clone().or(config.default_prompt);
-    config.disable_stream |= cli.disable_stream;
-    config.pure |= cli.pure;
-    config.verbose |= cli.verbose;
-    config
+    config.default_model = cli.model.clone().or(config.default_model);
+    if let Some(v) = cli.disable_stream {
+        for provider in config.providers.values_mut() {
+            for model in &mut provider.models {
+                model.stream = !v;
+            }
+        }
+    }
+    if let Some(v) = cli.pure {
+        config.pure = v;
+    }
+    if let Some(v) = cli.verbose {
+        config.verbose = v;
+    }
+    if let Some(v) = &cli.display {
+        config.display = crate::config::DisplayConfig::parse(v)?;
+    }
+    if let Some(v) = &cli.log_level {
+        config.log_level = v.clone();
+    }
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -326,6 +308,44 @@ mod tests {
                 "b": { "baseUrl": "http://localhost/v1", "models": [{"id":"shared"}] }
             }
         })).unwrap()
+    }
+    #[test]
+    fn stream_override_preserves_model_defaults_when_unset() {
+        let mut cfg = config();
+        cfg.providers.get_mut("a").unwrap().models[0].stream = false;
+        let cli = Cli::try_parse_from(["aichat", "hello"]).unwrap();
+        let merged = merge_config(&cfg, &cli).unwrap();
+        assert!(!merged.providers["a"].models[0].stream);
+        assert!(merged.providers["a"].models[1].stream);
+        for (arg, expected) in [("--disable-stream", false), ("--disable-stream=false", true)] {
+            let cli = Cli::try_parse_from(["aichat", arg, "hello"]).unwrap();
+            let merged = merge_config(&cfg, &cli).unwrap();
+            assert!(
+                merged
+                    .providers
+                    .values()
+                    .all(|p| p.models.iter().all(|m| m.stream == expected))
+            );
+        }
+    }
+    #[test]
+    fn display_and_boolean_overrides() {
+        let mut cfg = Config::default();
+        cfg.pure = true;
+        cfg.display.model = true;
+        let cli = Cli::try_parse_from(["aichat", "--pure=false", "--display=usage,duration"]).unwrap();
+        let merged = merge_config(&cfg, &cli).unwrap();
+        assert!(!merged.pure);
+        assert!(!merged.display.model);
+        assert!(merged.display.usage && merged.display.duration);
+        let cli = Cli::try_parse_from(["aichat", "--display="]).unwrap();
+        assert_eq!(
+            merge_config(&cfg, &cli).unwrap().display,
+            crate::config::DisplayConfig::default()
+        );
+        let cli = Cli::try_parse_from(["aichat", "--display=invalid"]).unwrap();
+        assert!(merge_config(&cfg, &cli).is_err());
+        assert!(Cli::try_parse_from(["aichat", "--list"]).is_err());
     }
     #[test]
     fn selectors_and_default_provider() {

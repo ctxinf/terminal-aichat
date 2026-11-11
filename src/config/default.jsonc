@@ -1,18 +1,16 @@
 {
   // Select models by ID, or provider/model-id. A provider scopes bare IDs.
-  // "defaultProvider": "my-gateway",
-  // "defaultModel": "deepseek-flash",
+  "defaultProvider": "openrouter",
+  "defaultModel": "deepseek-flash",
   "defaultPrompt": "sample_prompt",
   // "defaultThinkingLevel": "low", // Arbitrary reasoning_effort string; default low.
-  // "disableStream": false,
-  // "pure": false,
-  // "verbose": false,
+  "logLevel": "INFO",
   "providers": {
-    /*
-    "my-gateway": {
-      "baseUrl": "https://gateway.example.com/v1",
-      "apiKey": "$MY_GATEWAY_API_KEY",
-      // Omit apiKey for local services; alternatively "auth": { "type": "none" }.
+    "openrouter": {
+      "baseUrl": "https://openrouter.ai/api/v1",
+      // Run: aichat config login --provider openrouter
+      // "apiKey": { "value": "your-key", "encryption": "" }, // Omit for unauthenticated services.
+      // Login writes { "value": "v1:...", "encryption": "generated-passphrase" }.
       // "name": "My gateway", // Defaults to provider key.
       // "api": "openai-completions", // Only supported API; default.
       // "headers": { "X-Organization": "my-team", "X-Token": "${GATEWAY_TOKEN}" },
@@ -25,8 +23,9 @@
       "models": [
         {
           "id": "deepseek-flash",
+          "stream": true, // Per-model streaming; default true.
           // "name": "DeepSeek Flash", // Defaults to id.
-          // "reasoning": true, // Default true; false omits reasoning_effort.
+          // "reasoning": true, // Default true; false explicitly requests thinking off (API-specific).
           // "thinkingLevel": "low", // Overrides defaultThinkingLevel.
           // "headers": { "X-Model-Route": "fast" }, // Overrides provider headers.
           // "extraBody": { "temperature": 0.5 }, // Overrides provider fields.
@@ -34,18 +33,6 @@
         }
       ]
     }
-    */
-  },
-  "auth": {
-    /*
-    "gateway-account": {
-      "key": "MY_GATEWAY_API_KEY",
-      // Environment overrides value; unset environment falls back to value.
-      // "value": "your-key", // Literal; never interpolated or executed.
-      // "encryption": "generated-passphrase" // value must then be v1 ciphertext.
-      // v1: AES-256-GCM + Argon2id; password and ciphertext share this file.
-    }
-    */
   },
   "prompts": {
     "sample_prompt": {
@@ -56,5 +43,14 @@
     },
     "concise": { "system": "Use plain text, give extremely concise output" },
     "shell-exec-or-chat": { "system": INTEGRATION_PROMPT }
+  },
+  // "pure": false,
+  // "verbose": false,
+  "display": {
+    // "usage": false,
+    // "model": false,
+    // "prompt": false,
+    // "reasoning": false,
+    // "duration": false
   }
 }

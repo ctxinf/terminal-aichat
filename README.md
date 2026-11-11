@@ -60,7 +60,7 @@ Edit the config file to setup providers and models:
 
 ```sh
 # First, get the config file location
-aichat --list
+aichat config show
 # Or just:
 aichat
 
@@ -118,9 +118,9 @@ The integration prompt is written to your config as `prompts.shell-exec-or-chat`
 ### View Configurations
 
 ```sh
-aichat --list
+aichat config show
 # or
-aichat -l
+aichat config show
 ```
 
 This will show all configured providers, models, prompts, and the config file location.
@@ -146,9 +146,9 @@ Example config structure:
   "providers": {
     "openai": {
       "baseUrl": "https://api.openai.com/v1",
-      "apiKey": "$MY_OPENAI_API_KEY",
+      "apiKey": { "value": "your-key" },
       "models": [
-        { "id": "gpt-5-mini" },
+        { "id": "gpt-5-mini", "stream": true },
         {
           "id": "custom-model",
           "name": "My model",
@@ -162,11 +162,6 @@ Example config structure:
       "baseUrl": "http://127.0.0.1:11434/v1",
       "models": [{ "id": "local-model" }]
     }
-  },
-  "auth": {
-    // Optional fallback when MY_OPENAI_API_KEY is unset.
-    // Encrypted values use a matching generated encryption passphrase.
-    // "openai-account": { "key": "MY_OPENAI_API_KEY", "value": "your-key" }
   },
   "prompts": {
     "concise": { "system": "Use plain text, give concise output." }
@@ -238,7 +233,7 @@ Legacy `content` remains a literal system message and cannot be combined with
 
 ```sh
 # Specify a custom config file path
-aichat --config /path/to/config.jsonc --list
+aichat config --config /path/to/config.jsonc show
 aichat --config /path/to/config.jsonc "Hello?"
 ```
 
@@ -251,7 +246,7 @@ are searched globally and ambiguous matches are errors. IDs take precedence over
 
 `reasoning` defaults to true. `thinkingLevel` overrides `defaultThinkingLevel`
 (default `low`) and is sent directly as `reasoning_effort`. Set `reasoning: false`
-to omit it. Provider `extraBody` fields override the generated request, model
+to explicitly request thinking off. Provider `extraBody` fields override the generated request, model
 `extraBody` fields override provider fields, and `removeBodyFields` removes
 specified top-level fields last. Merging is shallow; nested values are replaced.
 Put API-specific fields such as `temperature` in `extraBody`.
@@ -266,28 +261,23 @@ Use command headers only in trusted configuration.
 
 ### API credentials
 
-Provider `apiKey` accepts a literal string or a whole `$NAME` / `${NAME}` reference.
-A reference first reads that environment variable; if unset, it finds the top-level
-`auth` entry whose `key` equals `NAME`. Auth entries allow only `key`, `value`,
-and `encryption` strings. `value` is literal unless `encryption` is present;
-then it must be a v1 encrypted packet (AES-256-GCM with Argon2id).
-Neither field interpolates variables or runs commands. An empty/invalid environment
-credential or a decryption failure is an error. No implicit `OPENAI_API_KEY` lookup
-or environment-file loading occurs. Omit `apiKey` for unauthenticated services
-(or use `"auth": {"type": "none"}`).
+Provider credentials use `"apiKey": {"value": "your-key"}`. Omit apiKey for unauthenticated providers. To save an encrypted key, run:
 
 ```sh
-export MY_OPENAI_API_KEY=your-key
-aichat "Hello?"
+aichat config init
+aichat config login --provider openrouter
 ```
+
+Login hides input, asks you to repeat the key, and saves `{ "value": "v1:...", "encryption": "generated-passphrase" }` in the selected provider. It preserves JSONC comments. AES-256-GCM + Argon2id protects against casual plaintext exposure; the passphrase shares the file, so read access permits decryption. Login saves with Unix mode 0600. The old top-level auth map and environment key matching are removed; credential values do not expand variables.
+
+`aichat config show`, `aichat config provider list` and `aichat config model list` list configuration without printing credentials. Options are isolated from chat: `aichat config --config ./custom.jsonc show`. Chat flags and piped input retain their original behavior; use `aichat -- config` to send the literal word config.
 
 ### Set Log Level
 
 ```sh
-export LOG_LEVEL=DEBUG
+export TERMINAL_AICHT_LOG_LEVEL=DEBUG
 ```
 
-> Equivalent to using `--verbose`
 
 ### Pure Mode (`--pure`)
 
@@ -308,3 +298,20 @@ aichat --verbose "Hello?"
 ```sh
 aichat --disable-stream "Hello?"
 ```
+
+
+### Display and agent documentation
+
+`aichat --skill` prints the detailed [agent usage guide](src/cli/skill.txt), including configuration, environment variables and shell integration.
+
+```sh
+aichat --display=usage,model,prompt,reasoning,duration "Hello"
+TERMINAL_AICHT_DISPLAY=usage,duration aichat "Hello"
+```
+
+Display defaults to empty. Config example: `"display": {"usage": true, "model": true, "duration": true}`.
+Environment variables with the `TERMINAL_AICHT_` prefix override CLI values, which override configuration values.
+Use `--display=` to clear display options; `--pure` suppresses them all.
+See `--skill` for the complete argument-to-environment mapping.
+
+Streaming is configured per model: `"stream": true` (default) or `false`. The old top-level `disableStream` field is removed; `--disable-stream` and `TERMINAL_AICHT_DISABLE_STREAM` override the model for one invocation.

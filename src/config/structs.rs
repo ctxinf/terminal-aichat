@@ -21,6 +21,8 @@ pub struct ModelConfig {
     pub id: String,
     pub name: Option<String>,
     #[serde(default = "yes")]
+    pub stream: bool,
+    #[serde(default = "yes")]
     pub reasoning: bool,
     pub thinking_level: Option<String>,
     #[serde(default)]
@@ -45,8 +47,7 @@ pub struct ProviderConfig {
     pub base_url: String,
     #[serde(default)]
     pub api: Api,
-    pub api_key: Option<String>,
-    pub auth: Option<ProviderAuth>,
+    pub api_key: Option<ApiKeyConfig>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
     #[serde(default)]
@@ -60,26 +61,17 @@ pub struct ProviderConfig {
     pub models: Vec<ModelConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
-pub enum ProviderAuth {
-    None,
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct AuthConfig {
-    pub key: Option<String>,
-    pub value: Option<String>,
+pub struct ApiKeyConfig {
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption: Option<String>,
 }
 
-// Credentials must never appear in diagnostics, even while encrypted.
-impl std::fmt::Debug for AuthConfig {
+impl std::fmt::Debug for ApiKeyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuthConfig")
-            .field("key", &self.key)
-            .finish_non_exhaustive()
+        f.write_str("ApiKeyConfig { [redacted] }")
     }
 }
 
@@ -95,19 +87,48 @@ pub struct PromptConfig {
     pub user: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct DisplayConfig {
+    pub usage: bool,
+    pub model: bool,
+    pub prompt: bool,
+    pub reasoning: bool,
+    pub duration: bool,
+}
+impl DisplayConfig {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let mut result = Self::default();
+        if value.is_empty() {
+            return Ok(result);
+        }
+        for item in value.split(',') {
+            match item.trim() {
+                "usage" => result.usage = true,
+                "model" => result.model = true,
+                "prompt" => result.prompt = true,
+                "reasoning" => result.reasoning = true,
+                "duration" => result.duration = true,
+                _ => return Err("display: expected usage,model,prompt,reasoning,duration".into()),
+            }
+        }
+        Ok(result)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Config {
     pub providers: HashMap<String, ProviderConfig>,
     pub prompts: HashMap<String, PromptConfig>,
-    pub auth: HashMap<String, AuthConfig>,
     pub default_provider: Option<String>,
     pub default_model: Option<String>,
     pub default_prompt: Option<String>,
     pub default_thinking_level: String,
-    pub disable_stream: bool,
     pub pure: bool,
     pub verbose: bool,
+    pub display: DisplayConfig,
+    pub log_level: String,
 }
 
 impl Default for Config {
@@ -115,14 +136,14 @@ impl Default for Config {
         Self {
             providers: HashMap::new(),
             prompts: HashMap::new(),
-            auth: HashMap::new(),
             default_provider: None,
             default_model: None,
             default_prompt: None,
             default_thinking_level: low(),
-            disable_stream: false,
             pure: false,
             verbose: false,
+            display: DisplayConfig::default(),
+            log_level: "INFO".into(),
         }
     }
 }
@@ -141,16 +162,6 @@ impl Config {
                 return Err(format!("prompts.{name}: content and system cannot be combined"));
             }
         }
-        for (id, auth) in &self.auth {
-            if auth.key.as_deref().is_some_and(str::is_empty) || (auth.key.is_none() && auth.value.is_none()) {
-                return Err(format!("auth.{id}: provide a nonempty key or value"));
-            }
-            if auth.encryption.as_deref().is_some_and(str::is_empty)
-                || (auth.encryption.is_some() && auth.value.as_deref().is_none_or(str::is_empty))
-            {
-                return Err(format!("auth.{id}: encryption requires nonempty encryption and value"));
-            }
-        }
         for (key, provider) in &self.providers {
             if provider.timeout_ms == 0 {
                 return Err(format!("providers.{key}.timeoutMs must be positive"));
@@ -160,8 +171,10 @@ impl Config {
             if !matches!(url.scheme(), "http" | "https") {
                 return Err(format!("providers.{key}.baseUrl must use HTTP(S)"));
             }
-            if provider.auth.is_some() && provider.api_key.is_some() {
-                return Err(format!("providers.{key}: auth none and apiKey cannot be combined"));
+            if let Some(api_key) = &provider.api_key {
+                if api_key.value.is_empty() {
+                    return Err(format!("providers.{key}.apiKey: value must be nonempty"));
+                }
             }
             let mut ids = std::collections::HashSet::new();
             for model in &provider.models {
@@ -197,9 +210,16 @@ mod tests {
             .replace("*/", "");
         let example: Config = serde_json_lenient::from_str(&enabled).unwrap();
         example.validate().unwrap();
-        assert_eq!(example.providers["my-gateway"].models[0].id, "deepseek-flash");
+        assert_eq!(example.providers["openrouter"].models[0].id, "deepseek-flash");
         let model: ModelConfig = serde_json::from_str(r#"{"id":"test"}"#).unwrap();
         assert!(model.reasoning);
+        assert!(model.stream);
+        assert!(
+            !serde_json::from_str::<ModelConfig>(r#"{"id":"test","stream":false}"#)
+                .unwrap()
+                .stream
+        );
+        assert!(serde_json::from_str::<Config>(r#"{"disableStream":false}"#).is_err());
         assert_eq!(model.get_name(), "test");
         assert!(model.thinking_level.is_none());
         let provider: ProviderConfig =
@@ -214,15 +234,14 @@ mod tests {
         )
         .unwrap();
         assert!(config.validate().unwrap_err().contains("duplicate"));
-        let config: Config = serde_json::from_str(r#"{"auth":{"account":{"value":"x","encryption":""}}}"#).unwrap();
-        assert!(config.validate().unwrap_err().contains("auth.account"));
-        assert!(serde_json::from_str::<AuthConfig>(r#"{"value":"x","algorithm":"custom"}"#).is_err());
+        assert!(serde_json::from_str::<Config>(r#"{"auth":{}}"#).is_err());
+        assert!(serde_json::from_str::<ApiKeyConfig>(r#"{"key":"OLD_KEY","value":"x"}"#).is_err());
     }
     #[test]
-    fn unknown_auth_fields_report_the_full_path() {
-        let source = r#"{"auth":{"account":{"value":"key","unexpected":true}}}"#;
+    fn unknown_credential_fields_report_the_full_path() {
+        let source = r#"{"providers":{"local":{"baseUrl":"http://localhost/v1","models":[],"apiKey":{"value":"key","unexpected":true}}}}"#;
         let mut deserializer = serde_json_lenient::Deserializer::from_str(source);
         let error = serde_path_to_error::deserialize::<_, Config>(&mut deserializer).unwrap_err();
-        assert!(error.to_string().contains("auth.account.unexpected"));
+        assert!(error.to_string().contains("providers.local.apiKey.unexpected"));
     }
 }

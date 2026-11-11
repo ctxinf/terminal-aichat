@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/ctxinf/terminal-ai
 
 ```sh
 # 首先获取配置文件位置
-aichat --list
+aichat config show
 # 或者直接运行：
 aichat
 
@@ -110,9 +110,9 @@ aichat --init-integration fish | source
 ### 查看配置
 
 ```sh
-aichat --list
+aichat config show
 # 或者
-aichat -l
+aichat config show
 ```
 
 这将显示所有已配置的providers、models、prompts以及配置文件位置。
@@ -138,9 +138,9 @@ aichat -l
   "providers": {
     "openai": {
       "baseUrl": "https://api.openai.com/v1",
-      "apiKey": "$MY_OPENAI_API_KEY",
+      "apiKey": { "value": "your-key" },
       "models": [
-        { "id": "gpt-5-mini" },
+        { "id": "gpt-5-mini", "stream": true },
         {
           "id": "custom-model",
           "name": "My model",
@@ -154,11 +154,6 @@ aichat -l
       "baseUrl": "http://127.0.0.1:11434/v1",
       "models": [{ "id": "local-model" }]
     }
-  },
-  "auth": {
-    // Optional fallback when MY_OPENAI_API_KEY is unset.
-    // Encrypted values use a matching generated encryption passphrase.
-    // "openai-account": { "key": "MY_OPENAI_API_KEY", "value": "your-key" }
   },
   "prompts": {
     "concise": { "system": "Use plain text, give concise output." }
@@ -227,7 +222,7 @@ stderr 仅用于失败诊断。Unix 超时或失败时会终止整个命令进�
 
 ```sh
 # 指定自定义配置文件路径
-aichat --config /path/to/config.jsonc --list
+aichat config --config /path/to/config.jsonc show
 aichat --config /path/to/config.jsonc "Hello?"
 ```
 
@@ -238,7 +233,7 @@ aichat --config /path/to/config.jsonc "Hello?"
 可以显式切换 provider。未指定默认 provider 时全局搜索，重名时报错，ID 优先于名称。
 
 `reasoning` 默认 true；`thinkingLevel` 覆盖 `defaultThinkingLevel`（默认 low），
-以原始字符串发送为 `reasoning_effort`。设为 false 时不生成此字段。
+以原始字符串发送为 `reasoning_effort`。设为 false 时显式请求关闭思考。
 请求覆盖顺序：基础请求 → provider.extraBody → model.extraBody → removeBodyFields。
 浅合并，嵌套值整体替换；`temperature` 等 API 参数放入 `extraBody`。
 
@@ -250,23 +245,26 @@ header 值支持 `$NAME` / `${NAME}` 插值及显式 `!command`；仅在选中�
 
 ### API 凭据
 
-provider.apiKey 支持字面值或完整的 `$NAME` / `${NAME}` 引用。先读取对应环境变量，
-未设置时查找顶层 auth 中 key 等于 NAME 的条目。条目仅允许 key、value、encryption
-三个可选字符串字段；value 默认按字面使用，设置 encryption 后按固定 v1 格式
-解密（AES-256-GCM + Argon2id）。value 和 encryption 不插值、不执行命令。
-环境凭据为空或无效、解密失败时直接报错。不隐式读取 OPENAI_API_KEY，不加载环境文件。
-本地无认证服务可省略 apiKey，也可使用 `"auth": {"type": "none"}`。
+凭据直接配置在 provider 内：`"apiKey": {"value": "your-key"}`。无认证服务省略 apiKey。
 
 ```sh
-export MY_OPENAI_API_KEY=your-key
-aichat "Hello?"
+aichat config init
+aichat config login --provider openrouter
 ```
+
+login 隐藏输入并要求再次输入确认，使用 AES-256-GCM + Argon2id 加密后保存为
+`{"value":"v1:...","encryption":"generated-passphrase"}`，保留 JSONC 注释。
+密文和加密口令同存配置，文件可读者仍可解密；Unix 下 login 将文件权限设为 0600。
+删除顶层 auth 和 key 匹配机制，value 不再展开环境变量。
+
+使用 `aichat config show`、`aichat config provider list`、`aichat config model list` 查看配置，凭据不会打印。
+子命令参数独立，例如 `aichat config --config ./custom.jsonc show`；聊天参数和管道输入保持原有行为。
+要发送字面值 config，可用 `aichat -- config`。
 
 #### 设置日志级别
 ```sh
-export LOG_LEVEL=DEBUG
+export TERMINAL_AICHT_LOG_LEVEL=DEBUG
 ```
-> 目前, 等同于 `--verbose`
 
 #### 使用纯净模式 (`--pure`)
 > 纯净模式不显示任何提示信息
@@ -282,3 +280,20 @@ aichat --verbose "Hello?"
 ```sh
 aichat --disable-stream "Hello?"
 ```
+
+
+### Display and agent documentation
+
+`aichat --skill` prints the detailed [agent usage guide](src/cli/skill.txt), including configuration, environment variables and shell integration.
+
+```sh
+aichat --display=usage,model,prompt,reasoning,duration "Hello"
+TERMINAL_AICHT_DISPLAY=usage,duration aichat "Hello"
+```
+
+Display defaults to empty. Config example: `"display": {"usage": true, "model": true, "duration": true}`.
+Environment variables with the `TERMINAL_AICHT_` prefix override CLI values, which override configuration values.
+Use `--display=` to clear display options; `--pure` suppresses them all.
+See `--skill` for the complete argument-to-environment mapping.
+
+Streaming is configured per model: `"stream": true` (default) or `false`. The old top-level `disableStream` field is removed; `--disable-stream` and `TERMINAL_AICHT_DISABLE_STREAM` override the model for one invocation.

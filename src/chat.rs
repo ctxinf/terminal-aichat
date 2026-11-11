@@ -1,5 +1,5 @@
-use crate::cli::response_render::{RenderConfig, ResponseRenderer};
-use crate::config::{Config, ModelConfig, PromptConfig, ProviderConfig, resolve_auth, resolve_header};
+use crate::cli::response_render::{RenderConfig, RenderEvent, ResponseRenderer};
+use crate::config::{Config, ModelConfig, PromptConfig, ProviderConfig, resolve_api_key, resolve_header};
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
@@ -24,9 +24,7 @@ pub async fn completion(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(provider.timeout_ms))
         .build()?;
-    let mut url = reqwest::Url::parse(&provider.base_url)?;
-    url.set_path(&format!("{}/chat/completions", url.path().trim_end_matches('/')));
-    url.query_pairs_mut().extend_pairs(&provider.query_params);
+    let url = completion_url(provider)?;
     let mut attempt = 0;
     let response = loop {
         let response = client
@@ -56,15 +54,22 @@ pub async fn completion(
         pure: config.pure,
         model_name: model.get_name(),
         prompt_config_name: prompt_name.into(),
-        type_speed: 30,
-        disable_stream,
+        display: config.display.clone(),
     });
+    let mut usage = Value::Null;
     let result: Result<()> = async {
         if disable_stream {
             let response: Value = response.json().await.map_err(|_| "invalid chat response")?;
             check_response(&response)?;
-            if let Some(content) = response["choices"][0]["message"]["content"].as_str() {
-                tx.send(content.to_owned()).await?;
+            if !response["usage"].is_null() {
+                usage = response["usage"].clone();
+            }
+            let message = &response["choices"][0]["message"];
+            if let Some(text) = reasoning_text(message) {
+                tx.send(RenderEvent::Reasoning(text.into())).await?;
+            }
+            if let Some(content) = message["content"].as_str() {
+                tx.send(RenderEvent::Content(content.to_owned())).await?;
             }
         } else {
             let mut events = response.bytes_stream().eventsource();
@@ -77,10 +82,16 @@ pub async fn completion(
                 }
                 let response: Value = serde_json::from_str(&event.data).map_err(|_| "invalid chat stream JSON")?;
                 check_response(&response)?;
+                if !response["usage"].is_null() {
+                    usage = response["usage"].clone();
+                }
                 if let Some(choices) = response["choices"].as_array() {
                     for choice in choices {
+                        if let Some(text) = reasoning_text(&choice["delta"]) {
+                            tx.send(RenderEvent::Reasoning(text.into())).await?;
+                        }
                         if let Some(content) = choice["delta"]["content"].as_str() {
-                            tx.send(content.to_owned()).await?;
+                            tx.send(RenderEvent::Content(content.to_owned())).await?;
                         }
                     }
                 }
@@ -95,10 +106,35 @@ pub async fn completion(
     drop(tx);
     task.await?;
     result?;
-    if !config.pure {
-        renderer.render_tail_bar();
+    if config.display.usage && !config.pure {
+        println!("\n{}", format_usage(&usage));
     }
     Ok(())
+}
+
+fn reasoning_text(message: &Value) -> Option<&str> {
+    message["reasoning_content"]
+        .as_str()
+        .or_else(|| message["reasoning"].as_str())
+}
+
+fn format_usage(usage: &Value) -> String {
+    let input = usage["prompt_tokens"].as_u64();
+    let output = usage["completion_tokens"].as_u64();
+    let cached = usage["prompt_tokens_details"]["cached_tokens"]
+        .as_u64()
+        .or_else(|| usage["prompt_cache_hit_tokens"].as_u64());
+    let rate = match (input, cached) {
+        (Some(total), Some(hit)) if total > 0 => format!("{:.1}%", hit as f64 / total as f64 * 100.0),
+        (Some(0), Some(_)) => "0.0%".into(),
+        _ => "n/a".into(),
+    };
+    format!(
+        "usage: input {} tokens, cache hit {}, output {} tokens",
+        input.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into()),
+        rate,
+        output.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into())
+    )
 }
 
 fn check_response(response: &Value) -> Result<()> {
@@ -108,10 +144,10 @@ fn check_response(response: &Value) -> Result<()> {
     Ok(())
 }
 
-async fn create_headers(provider: &ProviderConfig, model: &ModelConfig, config: &Config) -> Result<HeaderMap> {
+async fn create_headers(provider: &ProviderConfig, model: &ModelConfig, _config: &Config) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
     if let Some(api_key) = &provider.api_key {
-        let key = resolve_auth(api_key, &config.auth)?;
+        let key = resolve_api_key(api_key)?;
         let mut value = HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| "invalid API credential header")?;
         value.set_sensitive(true);
         headers.insert(AUTHORIZATION, value);
@@ -133,15 +169,45 @@ async fn create_headers(provider: &ProviderConfig, model: &ModelConfig, config: 
     Ok(headers)
 }
 
+fn completion_url(provider: &ProviderConfig) -> Result<reqwest::Url> {
+    let mut url = reqwest::Url::parse(&provider.base_url)?;
+    url.set_path(&format!("{}/chat/completions", url.path().trim_end_matches('/')));
+    if !provider.query_params.is_empty() {
+        url.query_pairs_mut().extend_pairs(&provider.query_params);
+    }
+    if url.query() == Some("") {
+        url.set_query(None);
+    }
+    Ok(url)
+}
+
 fn create_request(messages: Value, provider: &ProviderConfig, model: &ModelConfig, config: &Config) -> Value {
-    let mut body = json!({ "model": model.id, "stream": !config.disable_stream,
+    let mut body = json!({ "model": model.id, "stream": model.stream,
         "messages": messages });
     if model.reasoning {
         body["reasoning_effort"] = json!(model.thinking_level.as_ref().unwrap_or(&config.default_thinking_level));
+    } else {
+        let host = reqwest::Url::parse(&provider.base_url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned));
+        if host.as_deref() == Some("openrouter.ai") {
+            body["reasoning"] = json!({"enabled": false});
+        } else if host.as_deref() == Some("api.deepseek.com")
+            || model.id.rsplit('/').next().is_some_and(|id| id.starts_with("deepseek"))
+        {
+            body["thinking"] = json!({"type": "disabled"});
+        } else {
+            body["reasoning_effort"] = json!("none");
+        }
     }
     let fields = body.as_object_mut().unwrap();
     fields.extend(provider.extra_body.clone());
     fields.extend(model.extra_body.clone());
+    if config.display.usage && fields.get("stream").and_then(Value::as_bool) == Some(true) {
+        fields
+            .entry("stream_options")
+            .or_insert_with(|| json!({"include_usage": true}));
+    }
     for field in &model.remove_body_fields {
         fields.remove(field);
     }
@@ -155,7 +221,7 @@ mod tests {
         serde_json::from_value(json!({
             "defaultThinkingLevel": "custom-effort",
             "providers": {"gateway": {
-                "baseUrl": "http://localhost/v1", "apiKey": "example",
+                "baseUrl": "http://localhost/v1", "apiKey": {"value":"example"},
                 "headers": {"X-Route":"provider", "X-Shared":"shared"},
                 "extraBody": {"temperature":0.7,"store":true,"nested":{"a":1}},
                 "models": [{"id":"vendor/model", "headers":{"x-route":"model"},
@@ -164,6 +230,107 @@ mod tests {
         }))
         .unwrap()
     }
+    #[test]
+    fn usage_and_reasoning_fields() {
+        assert_eq!(
+            format_usage(&json!({"prompt_tokens":100,"completion_tokens":20,
+            "prompt_tokens_details":{"cached_tokens":25}})),
+            "usage: input 100 tokens, cache hit 25.0%, output 20 tokens"
+        );
+        assert!(format_usage(&Value::Null).contains("cache hit n/a"));
+        assert_eq!(
+            reasoning_text(&json!({"reasoning_content":"thinking"})),
+            Some("thinking")
+        );
+        assert_eq!(reasoning_text(&json!({"reasoning":"thinking"})), Some("thinking"));
+        let mut cfg = config();
+        cfg.display.usage = true;
+        let provider = &cfg.providers["gateway"];
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &cfg)["stream_options"]["include_usage"],
+            true
+        );
+    }
+    #[test]
+    fn model_stream_controls_request_and_usage_options() {
+        let mut cfg = config();
+        cfg.display.usage = true;
+        let mut provider = cfg.providers["gateway"].clone();
+        let mut model = provider.models[0].clone();
+        for stream in [true, false] {
+            model.stream = stream;
+            let body = create_request(json!([]), &provider, &model, &cfg);
+            assert_eq!(body["stream"], stream);
+            assert_eq!(body.get("stream_options").is_some(), stream);
+        }
+        provider.extra_body.insert("stream".into(), json!(true));
+        let body = create_request(json!([]), &provider, &model, &cfg);
+        assert_eq!(body["stream_options"]["include_usage"], true);
+        model.extra_body.insert("stream".into(), json!(false));
+        let body = create_request(json!([]), &provider, &model, &cfg);
+        assert_eq!(body["stream"], false);
+        assert!(body.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn completion_urls_do_not_add_empty_queries() {
+        let cfg = config();
+        let mut provider = cfg.providers["gateway"].clone();
+        for base in ["http://localhost/v1", "http://localhost/v1/", "http://localhost/v1?"] {
+            provider.base_url = base.into();
+            assert_eq!(
+                completion_url(&provider).unwrap().as_str(),
+                "http://localhost/v1/chat/completions"
+            );
+        }
+        provider.base_url = "http://localhost/v1?existing=yes".into();
+        assert_eq!(completion_url(&provider).unwrap().query(), Some("existing=yes"));
+        provider.query_params.insert("region".into(), "sg".into());
+        assert_eq!(
+            completion_url(&provider).unwrap().query(),
+            Some("existing=yes&region=sg")
+        );
+    }
+
+    #[test]
+    fn reasoning_false_sends_explicit_api_switches() {
+        let cfg = config();
+        let mut provider = cfg.providers["gateway"].clone();
+        let mut model = provider.models[0].clone();
+        model.reasoning = false;
+        model.thinking_level = Some("high".into());
+        assert_eq!(
+            create_request(json!([]), &provider, &model, &cfg)["reasoning_effort"],
+            "none"
+        );
+        model.id = "deepseek-flash".into();
+        let body = create_request(json!([]), &provider, &model, &cfg);
+        assert_eq!(body["thinking"], json!({"type":"disabled"}));
+        assert!(body.get("reasoning_effort").is_none());
+        provider.base_url = "https://openrouter.ai/api/v1".into();
+        assert_eq!(
+            create_request(json!([]), &provider, &model, &cfg)["reasoning"],
+            json!({"enabled":false})
+        );
+        provider.base_url = "https://api.deepseek.com/v1".into();
+        model.id = "custom-alias".into();
+        assert_eq!(
+            create_request(json!([]), &provider, &model, &cfg)["thinking"]["type"],
+            "disabled"
+        );
+        model.extra_body.insert("thinking".into(), json!({"type":"enabled"}));
+        assert_eq!(
+            create_request(json!([]), &provider, &model, &cfg)["thinking"]["type"],
+            "enabled"
+        );
+        model.remove_body_fields.push("thinking".into());
+        assert!(
+            create_request(json!([]), &provider, &model, &cfg)
+                .get("thinking")
+                .is_none()
+        );
+    }
+
     #[tokio::test]
     async fn request_merge_and_reasoning() {
         let mut cfg = config();
@@ -173,7 +340,12 @@ mod tests {
         };
         let provider = &cfg.providers["gateway"];
         let model = &provider.models[0];
-        let body = create_request(crate::prompt::render(&prompt, "hello").await.unwrap(), provider, model, &cfg);
+        let body = create_request(
+            crate::prompt::render(&prompt, "hello").await.unwrap(),
+            provider,
+            model,
+            &cfg,
+        );
         assert_eq!(body["model"], "vendor/model");
         assert_eq!(body["reasoning_effort"], "custom-effort");
         assert_eq!(body["temperature"], 0.2);
@@ -181,10 +353,9 @@ mod tests {
         assert!(body.get("store").is_none());
         cfg.providers.get_mut("gateway").unwrap().models[0].reasoning = false;
         let provider = &cfg.providers["gateway"];
-        assert!(
-            create_request(crate::prompt::render(&prompt, "hello").await.unwrap(), provider, &provider.models[0], &cfg)
-                .get("reasoning_effort")
-                .is_none()
+        assert_eq!(
+            create_request(json!([]), provider, &provider.models[0], &cfg)["reasoning_effort"],
+            "none"
         );
     }
     #[tokio::test]
@@ -264,7 +435,9 @@ mod tests {
             });
             let mut cfg = config();
             cfg.pure = true;
-            cfg.disable_stream = !streaming;
+            cfg.providers.get_mut("gateway").unwrap().models[0].stream = streaming;
+            cfg.providers.get_mut("gateway").unwrap().api_key =
+                Some(crate::config::encrypt_api_key("example").unwrap());
             let provider = cfg.providers.get_mut("gateway").unwrap();
             provider.base_url = format!("http://{address}/v1/");
             provider.query_params.insert("region".into(), "sg".into());
