@@ -339,3 +339,35 @@ fn zsh_options_override_defaults_and_forward_session_flags() {
         assert!(text.contains("\n-c\n") || text.contains("\n--continue\n"), "{text}");
     }
 }
+
+#[test]
+fn zsh_public_entry_points_support_q_and_qe_with_noglob() {
+    if Command::new("zsh").arg("--version").output().is_err() {
+        eprintln!("Skipping unavailable zsh");
+        return;
+    }
+    let f = Fixture::new();
+    let script = f.script("zsh");
+    for (action, reply, expected) in [
+        ("q what? *.nonexistent", "plain reply", "plain reply\n"),
+        ("q hello", r#"{"command":"printf command-ok"}"#, "printf command-ok\n"),
+        (
+            "qe hello?",
+            r#"{"command":"printf command-ok"}"#,
+            "# printf command-ok\ncommand-ok",
+        ),
+        ("echo context | q hello", "pipe reply", "pipe reply\n"),
+    ] {
+        // Evaluate `action` at runtime so zsh parses it after aliases are defined.
+        let output = f.run(
+            "zsh",
+            &script,
+            &format!("eval '{}'", action.replace('\'', "'\\''")),
+            reply,
+            false,
+            false,
+        );
+        assert!(output.status.success(), "{action}: {:?}", output);
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    }
+}

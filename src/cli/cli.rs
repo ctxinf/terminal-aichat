@@ -177,7 +177,7 @@ async fn handle_chat_command(
     );
 
     let session = if cli.continue_session {
-        Some(crate::session::Session::open(cli.new_session)?)
+        Some(crate::session::Session::open(cli.new_session, &runtime_config.sessions)?)
     } else {
         None
     };

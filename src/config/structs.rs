@@ -120,6 +120,22 @@ impl DisplayConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct SessionsConfig {
+    pub auto_delete: bool,
+    pub auto_delete_days: u64,
+}
+
+impl Default for SessionsConfig {
+    fn default() -> Self {
+        Self {
+            auto_delete: true,
+            auto_delete_days: 7,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Config {
@@ -131,6 +147,7 @@ pub struct Config {
     pub default_thinking_level: String,
     pub pure: bool,
     pub display: DisplayConfig,
+    pub sessions: SessionsConfig,
     pub log_level: String,
 }
 
@@ -145,6 +162,7 @@ impl Default for Config {
             default_thinking_level: low(),
             pure: false,
             display: DisplayConfig::default(),
+            sessions: SessionsConfig::default(),
             log_level: "INFO".into(),
         }
     }
@@ -159,6 +177,9 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.sessions.auto_delete_days == 0 {
+            return Err("sessions.autoDeleteDays must be positive".into());
+        }
         for (name, prompt) in &self.prompts {
             if prompt.system.is_some() && !prompt.content.is_empty() {
                 return Err(format!("prompts.{name}: content and system cannot be combined"));
@@ -257,5 +278,20 @@ mod tests {
         let mut deserializer = serde_json_lenient::Deserializer::from_str(source);
         let error = serde_path_to_error::deserialize::<_, Config>(&mut deserializer).unwrap_err();
         assert!(error.to_string().contains("providers.local.apiKey.unexpected"));
+    }
+    #[test]
+    fn sessions_config_defaults_and_validation() {
+        let cfg = Config::default();
+        assert!(cfg.sessions.auto_delete);
+        assert_eq!(cfg.sessions.auto_delete_days, 7);
+
+        let custom: Config =
+            serde_json::from_str(r#"{"sessions":{"autoDelete":false,"autoDeleteDays":14}}"#).unwrap();
+        assert!(!custom.sessions.auto_delete);
+        assert_eq!(custom.sessions.auto_delete_days, 14);
+        custom.validate().unwrap();
+
+        let invalid: Config = serde_json::from_str(r#"{"sessions":{"autoDeleteDays":0}}"#).unwrap();
+        assert!(invalid.validate().unwrap_err().contains("autoDeleteDays"));
     }
 }

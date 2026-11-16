@@ -1,12 +1,12 @@
 # terminal-aichat zsh integration
 #
 # Provides:
-#   ? <message>     ask AI; if reply is a command, put it into the buffer
-#   ?! <message>    ask AI; if a command is parsed, echo it as `# …`
-#                   comments then execute it; if parsing fails, dump the
-#                   reply as chat text (no execution)
-#   command | ?     pipe stdin as additional context
-#   ? --debug ...   prepend the raw model reply as a comment line (`?` only)
+#   ? / q <message>   ask AI; if reply is a command, put it into the buffer
+#   ?! / qe <message> ask AI; if a command is parsed, echo it as `# …`
+#                     comments then execute it; if parsing fails, dump the
+#                     reply as chat text (no execution)
+#   command | ?       pipe stdin as additional context
+#   ? --debug ...     prepend the raw model reply as a comment line (`?` / `q` only)
 #
 # Install:
 #   eval "$(aichat --init-integration zsh)"
@@ -150,3 +150,5 @@ _aichat_ask_exec() {
 # Use `noglob` so `?` and `*` in user input aren't expanded by zsh globbing.
 alias '?'='noglob _aichat_ask'
 alias '?!'='noglob _aichat_ask_exec'
+alias q='noglob _aichat_ask'
+alias qe='noglob _aichat_ask_exec'

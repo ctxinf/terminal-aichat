@@ -60,4 +60,9 @@
     // "reasoning": false,
     // "duration": false
   }
+  // ,
+  // "sessions": {
+  //   "autoDelete": true, // Automatically delete -c session history older than autoDeleteDays.
+  //   "autoDeleteDays": 7
+  // }
 }
